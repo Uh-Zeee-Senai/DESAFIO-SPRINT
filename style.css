@@ -3,7 +3,7 @@
 }
 
 body {
-	background: #2b2b2b;
+	background: #222;
 	color: #eee;
 	margin: 0;
 	font-family: Arial, Helvetica, sans-serif;
@@ -16,7 +16,7 @@ body {
 }
 
 .game-canvas {
-	background: linear-gradient(#444, #222);
+	background: #444;
 	width: var(--track-width);
 	height: 600px;
 	border-radius: 12px;
@@ -34,25 +34,12 @@ canvas {
 	width: 320px;
 }
 
-.pickup-icon {
-	width: 28px;
-	height: 28px;
-	display: inline-block;
-	vertical-align: middle;
-}
-
 .badge-small {
 	font-size: .85rem;
 }
 
-.center {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-}
-
-.bg-movie-1 {
-	background-image: url('https://images.unsplash.com/photo-1503376780353-7e6692767b70?q=80&w=1600&auto=format&fit=crop&ixlib=rb-4.0.3&s=');
+.bg-movie {
+	background-image: url('https://images.unsplash.com/photo-1503376780353-7e6692767b70?q=80&w=1600&auto=format&fit=crop');
 	background-size: cover;
 	background-position: center;
 }
