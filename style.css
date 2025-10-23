@@ -1,28 +1,68 @@
-/* tela cheia e background */
-body, html {
+html, body {
 	margin: 0;
 	padding: 0;
-	width: 100%;
 	height: 100%;
+	width: 100%;
 	overflow: hidden;
 	font-family: Arial, Helvetica, sans-serif;
+	background: #000;
+	color: white;
+	text-align: center;
 }
 
-canvas {
-	display: block;
-	position: absolute;
-	top: 0;
-	left: 0;
+#loginScreen {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	height: 100vh;
+	background: radial-gradient(circle at center, #111 0%, #000 100%);
+}
+
+#loginScreen h1 {
+	color: #ff3030;
+	margin-bottom: 20px;
+}
+
+#playerName {
+	padding: 10px;
+	width: 250px;
+	border-radius: 8px;
+	border: none;
+	font-size: 16px;
+	text-align: center;
+}
+
+#startBtn {
+	margin-top: 15px;
+	padding: 10px 30px;
+	background: #ff3030;
+	color: white;
+	border: none;
+	border-radius: 10px;
+	cursor: pointer;
+	font-size: 18px;
+	transition: 0.3s;
+}
+
+#startBtn:hover {
+	background: #ff5050;
 }
 
 #hud {
 	position: absolute;
 	top: 10px;
-	left: 10px;
-	background: rgba(0,0,0,0.5);
-	padding: 10px;
-	border-radius: 8px;
-	color: white;
-	font-size: 14px;
-	z-index: 1000;
+	left: 50%;
+	transform: translateX(-50%);
+	font-size: 18px;
+	background: rgba(0, 0, 0, 0.6);
+	padding: 8px 20px;
+	border-radius: 10px;
+}
+
+canvas {
+	width: 100%;
+	height: 100%;
+	display: block;
+	background: #333;
 }

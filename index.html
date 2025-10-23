@@ -1,18 +1,28 @@
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="pt-BR">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TopGear Style Game</title>
-<link rel="stylesheet" href="style.css">
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Top Gear Sprint</title>
+	<link rel="stylesheet" href="style.css">
 </head>
 <body>
-<canvas id="gameCanvas"></canvas>
-<div id="hud">
-  <p>Velocidade: <span id="speedVal">0</span></p>
-  <p>Pickups: <span id="collected">0</span></p>
-  <p>Easter Eggs: <span id="egFound">0</span></p>
-</div>
-<script src="script.js"></script>
+	<div id="loginScreen">
+		<h1>🏎️ Corrida Top Gear</h1>
+		<input type="text" id="playerName" placeholder="Digite seu nome">
+		<button id="startBtn">Start</button>
+	</div>
+
+	<div id="gameContainer" style="display:none;">
+		<canvas id="gameCanvas"></canvas>
+		<div id="hud">
+			<span id="playerLabel">Player:</span>
+			<span id="speedLabel">Velocidade:</span> <span id="speedVal">0</span> km/h |
+			<span id="distLabel">Distância:</span> <span id="distVal">0</span> m |
+			<span id="posLabel">Posição:</span> <span id="posVal">1º</span>
+		</div>
+	</div>
+
+	<script src="script.js"></script>
 </body>
 </html>
