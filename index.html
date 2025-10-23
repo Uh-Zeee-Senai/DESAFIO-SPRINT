@@ -3,25 +3,28 @@
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Top Gear Sprint</title>
+	<title>Top Gear JS</title>
 	<link rel="stylesheet" href="style.css">
 </head>
 <body>
-	<div id="loginScreen">
-		<h1>🏎️ Corrida Top Gear</h1>
-		<input type="text" id="playerName" placeholder="Digite seu nome">
+
+	<!-- ===== MENU INICIAL ===== -->
+	<div id="menu" class="menu">
+		<h1>🏁 Top Gear JS</h1>
+		<label for="playerName">Digite seu nome:</label>
+		<input type="text" id="playerName" placeholder="Seu nome...">
 		<button id="startBtn">Start</button>
 	</div>
 
-	<div id="gameContainer" style="display:none;">
-		<canvas id="gameCanvas"></canvas>
-		<div id="hud">
-			<span id="playerLabel">Player:</span>
-			<span id="speedLabel">Velocidade:</span> <span id="speedVal">0</span> km/h |
-			<span id="distLabel">Distância:</span> <span id="distVal">0</span> m |
-			<span id="posLabel">Posição:</span> <span id="posVal">1º</span>
-		</div>
+	<!-- ===== HUD ===== -->
+	<div id="hud" class="hud">
+		<span id="hudPlayer">Player</span>
+		<span id="hudSpeed">Vel: 0 km/h</span>
+		<span id="hudDist">Distância: 0</span>
 	</div>
+
+	<!-- ===== JOGO ===== -->
+	<canvas id="gameCanvas" width="800" height="600"></canvas>
 
 	<script src="script.js"></script>
 </body>

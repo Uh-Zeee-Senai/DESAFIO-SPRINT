@@ -1,193 +1,174 @@
-// === CONFIGURAÇÕES PRINCIPAIS (FÁCEIS DE EDITAR) ===
+// ==================== CONFIGURAÇÕES ====================
 const CONFIG = {
 	PLAYER_IMG: "ngtr.png",
-	BOT_IMG: "bot.png",
-	BOOST_IMG: "supercar.png",
+	BOT_IMG: "P.png",
+	BOOST_IMG: "DG.png",
 	EASTER_IMG: "ea.png",
-	ROAD_SPEED: 10,
+	ROAD_SPEED: 6,
 	BOOST_MULTIPLIER: 1.8,
 	BOOST_DURATION: 5000,
 	TRACK_LENGTH: 5000,
-	CANVAS_BG: "#222"
+	CANVAS_BG: "#222",
+	SPAWN_EASTER_DELAY: 8000 // tempo em ms até o easter aparecer
 };
 
-// === VARIÁVEIS GLOBAIS ===
-let canvas, ctx, W, H;
+// ==================== VARIÁVEIS GLOBAIS ====================
+let canvas, ctx;
 let player, bot, easterEgg = null;
-let distance = CONFIG.TRACK_LENGTH;
 let gameRunning = false;
 let playerName = "";
-let keys = {};
+let distance = CONFIG.TRACK_LENGTH;
 let boostActive = false;
-let easterTimeout;
+let keys = {};
 
-// === LOGIN E INÍCIO ===
-document.getElementById("startBtn").addEventListener("click", startGame);
-function startGame() {
-	const input = document.getElementById("playerName");
-	playerName = input.value.trim() || "Jogador";
-	localStorage.setItem("lastPlayer", playerName);
-	document.getElementById("playerLabel").textContent = "Player: " + playerName;
-	document.getElementById("loginScreen").style.display = "none";
-	document.getElementById("gameContainer").style.display = "block";
-	init();
-}
-
-// Carrega nome anterior, se existir
-window.onload = () => {
-	const saved = localStorage.getItem("lastPlayer");
-	if (saved) document.getElementById("playerName").value = saved;
-};
-
-// === INICIALIZAÇÃO DO JOGO ===
-function init() {
+// ==================== EVENTOS INICIAIS ====================
+window.addEventListener("DOMContentLoaded", () => {
 	canvas = document.getElementById("gameCanvas");
 	ctx = canvas.getContext("2d");
-	resize();
-	window.addEventListener("resize", resize);
-	document.addEventListener("keydown", e => keys[e.key] = true);
-	document.addEventListener("keyup", e => keys[e.key] = false);
 
-	player = new Car(CONFIG.PLAYER_IMG, W / 2 - 100, H - 150, 6);
-	bot = new Car(CONFIG.BOT_IMG, W / 2 + 100, H - 300, 6);
+	document.getElementById("startBtn").addEventListener("click", startGame);
 
+	const saved = localStorage.getItem("lastPlayer");
+	if (saved) document.getElementById("playerName").value = saved;
+
+	window.addEventListener("keydown", e => keys[e.key] = true);
+	window.addEventListener("keyup", e => keys[e.key] = false);
+});
+
+// ==================== FUNÇÕES DO JOGO ====================
+
+function startGame() {
+	playerName = document.getElementById("playerName").value.trim();
+	if (!playerName) return alert("Digite seu nome para jogar!");
+
+	localStorage.setItem("lastPlayer", playerName);
+
+	document.getElementById("menu").style.display = "none";
+	document.getElementById("hud").style.display = "flex";
+
+	resetGame();
 	gameRunning = true;
-	spawnEasterEgg();
-	loop();
+	requestAnimationFrame(gameLoop);
+	setTimeout(spawnEasterEgg, CONFIG.SPAWN_EASTER_DELAY);
 }
 
-// === AJUSTE DE TELA ===
-function resize() {
-	W = window.innerWidth;
-	H = window.innerHeight;
-	canvas.width = W;
-	canvas.height = H;
+function resetGame() {
+	player = { x: 300, y: 500, speed: 0, img: new Image(), baseSpeed: 6 };
+	player.img.src = CONFIG.PLAYER_IMG;
+
+	bot = { x: 350, y: 200, speed: 5, img: new Image(), drift: 0 };
+	bot.img.src = CONFIG.BOT_IMG;
+
+	easterEgg = null;
+	distance = CONFIG.TRACK_LENGTH;
+	boostActive = false;
 }
 
-// === CLASSE DE CARROS ===
-class Car {
-	constructor(imgSrc, x, y, speed) {
-		this.img = new Image();
-		this.img.src = imgSrc;
-		this.x = x;
-		this.y = y;
-		this.speed = speed;
-		this.width = 90;
-		this.height = 150;
-	}
-	draw() {
-		ctx.drawImage(this.img, this.x, this.y, this.width, this.height);
-	}
-}
-
-// === EASTER EGG ===
 function spawnEasterEgg() {
-	const delay = Math.random() * 7000 + 3000; // aparece entre 3 e 10s
-	easterTimeout = setTimeout(() => {
-		easterEgg = {
-			img: new Image(),
-			x: Math.random() * (W - 100),
-			y: -100,
-			width: 60,
-			height: 60
-		};
-		easterEgg.img.src = CONFIG.EASTER_IMG;
-	}, delay);
+	easterEgg = {
+		x: Math.random() * (canvas.width - 60),
+		y: -50,
+		img: new Image()
+	};
+	easterEgg.img.src = CONFIG.EASTER_IMG;
 }
 
-// === BOOST TEMPORÁRIO ===
+// ==================== GAME LOOP ====================
+function gameLoop() {
+	if (!gameRunning) return;
+
+	update();
+	draw();
+
+	requestAnimationFrame(gameLoop);
+}
+
+// ==================== ATUALIZAÇÃO ====================
+function update() {
+	// Movimento do jogador
+	if (keys["ArrowLeft"] || keys["a"]) player.x -= 5;
+	if (keys["ArrowRight"] || keys["d"]) player.x += 5;
+	if (keys["ArrowUp"] || keys["w"]) player.speed = player.baseSpeed;
+	else player.speed *= 0.98; // desacelera se não estiver acelerando
+
+	// Movimento da IA
+	bot.speed = 5 + Math.random() * 0.5;
+	bot.y += bot.speed;
+	if (Math.random() < 0.01) bot.x += (Math.random() - 0.5) * 40;
+
+	// Movimento da pista (efeito)
+	distance -= player.speed * 0.5;
+	if (distance <= 0) endRace();
+
+	// Movimento do Easter Egg
+	if (easterEgg) {
+		easterEgg.y += CONFIG.ROAD_SPEED;
+		if (easterEgg.y > canvas.height) easterEgg = null;
+
+		// Verifica colisão com o player
+		if (collides(player, easterEgg)) {
+			activateBoost();
+			easterEgg = null;
+		}
+	}
+
+	// Mantém dentro da pista
+	player.x = Math.max(0, Math.min(canvas.width - 80, player.x));
+}
+
 function activateBoost() {
 	if (boostActive) return;
+
 	boostActive = true;
 	player.img.src = CONFIG.BOOST_IMG;
-	player.speed *= CONFIG.BOOST_MULTIPLIER;
+	player.baseSpeed *= CONFIG.BOOST_MULTIPLIER;
+
 	setTimeout(() => {
+		player.baseSpeed /= CONFIG.BOOST_MULTIPLIER;
 		player.img.src = CONFIG.PLAYER_IMG;
-		player.speed /= CONFIG.BOOST_MULTIPLIER;
 		boostActive = false;
 	}, CONFIG.BOOST_DURATION);
 }
 
-// === LOOP PRINCIPAL ===
-function loop() {
-	if (!gameRunning) return;
-
-	update();
-	render();
-	requestAnimationFrame(loop);
-}
-
-// === ATUALIZAÇÃO ===
-function update() {
-	// Movimento do player
-	if (keys["ArrowLeft"] || keys["a"]) player.x -= player.speed;
-	if (keys["ArrowRight"] || keys["d"]) player.x += player.speed;
-	player.x = Math.max(0, Math.min(W - player.width, player.x));
-
-	// Movimento do bot (IA simples)
-	bot.y -= (Math.random() * 2 - 1) * 2; // pequenas variações
-	bot.x += (Math.random() * 2 - 1) * 2; // move lateralmente
-	bot.x = Math.max(0, Math.min(W - bot.width, bot.x));
-
-	// Movimento da pista e distância
-	distance -= CONFIG.ROAD_SPEED;
-	if (distance <= 0) finishRace();
-
-	// Movimento do Easter Egg
-	if (easterEgg) {
-		easterEgg.y += 8;
-		if (checkCollision(player, easterEgg)) {
-			easterEgg = null;
-			clearTimeout(easterTimeout);
-			activateBoost();
-			spawnEasterEgg();
-		}
-		if (easterEgg && easterEgg.y > H) easterEgg = null;
-	}
-
-	document.getElementById("speedVal").textContent = Math.floor(player.speed * 20);
-	document.getElementById("distVal").textContent = Math.max(0, distance);
-	document.getElementById("posVal").textContent = player.y < bot.y ? "1º" : "2º";
-}
-
-// === DESENHO ===
-function render() {
+// ==================== DESENHO ====================
+function draw() {
 	ctx.fillStyle = CONFIG.CANVAS_BG;
-	ctx.fillRect(0, 0, W, H);
+	ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-	// Desenha "pista"
-	const roadWidth = W * 0.6;
-	const roadX = (W - roadWidth) / 2;
-	ctx.fillStyle = "#444";
-	ctx.fillRect(roadX, 0, roadWidth, H);
+	// Desenha estrada
+	const roadWidth = canvas.width * 0.6;
+	const roadX = (canvas.width - roadWidth) / 2;
+	ctx.fillStyle = "#555";
+	ctx.fillRect(roadX, 0, roadWidth, canvas.height);
 
-	// Linha de chegada
-	if (distance < 500) {
-		ctx.fillStyle = "white";
-		ctx.fillRect(roadX, 100, roadWidth, 20);
-	}
+	// Desenha o bot
+	ctx.drawImage(bot.img, bot.x, bot.y, 70, 100);
+	bot.y += 2;
+	if (bot.y > canvas.height) bot.y = -100;
 
-	// Desenha Easter Egg
-	if (easterEgg) ctx.drawImage(easterEgg.img, easterEgg.x, easterEgg.y, easterEgg.width, easterEgg.height);
+	// Desenha o player
+	ctx.drawImage(player.img, player.x, player.y, 80, 120);
 
-	// Desenha carros
-	player.draw();
-	bot.draw();
+	// Desenha o Easter Egg
+	if (easterEgg) ctx.drawImage(easterEgg.img, easterEgg.x, easterEgg.y, 60, 60);
+
+	// Atualiza HUD
+	document.getElementById("hudPlayer").textContent = `${playerName}`;
+	document.getElementById("hudSpeed").textContent = `Vel: ${Math.round(player.speed * 20)} km/h`;
+	document.getElementById("hudDist").textContent = `Distância: ${Math.max(0, Math.round(distance))}`;
 }
 
-// === COLISÃO ===
-function checkCollision(a, b) {
-	return (
-		a.x < b.x + b.width &&
-		a.x + a.width > b.x &&
-		a.y < b.y + b.height &&
-		a.y + a.height > b.y
-	);
+function collides(a, b) {
+	if (!a || !b) return false;
+	return a.x < b.x + 50 &&
+	       a.x + 80 > b.x &&
+	       a.y < b.y + 50 &&
+	       a.y + 120 > b.y;
 }
 
-// === FINAL DA CORRIDA ===
-function finishRace() {
+function endRace() {
 	gameRunning = false;
-	alert(player.y < bot.y ? "🏆 Você venceu, " + playerName + "!" : "😢 Você perdeu!");
-	document.location.reload();
+	document.getElementById("menu").style.display = "flex";
+	document.getElementById("hud").style.display = "none";
+	alert("🏁 Corrida encerrada!");
 }
