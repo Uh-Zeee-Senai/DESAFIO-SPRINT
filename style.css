@@ -1,27 +1,29 @@
 body {
     margin: 0;
     overflow: hidden;
-    font-family: 'Press Start 2P', cursive; /* Ou outra fonte pixelada */
+    height: 100vh;
+    width: 100vw;
+    font-family: 'Press Start 2P', cursive; 
     background-color: #000;
     color: #fff;
     text-shadow: 1px 1px 2px #000;
 }
 
-#gameCanvasContainer {
-    position: relative;
-    width: 100vw;
-    height: 100vh;
-}
-
+/* 🚨 CORREÇÃO CRÍTICA: O Canvas agora está fixed e com z-index baixo */
 #gameCanvas {
-    display: block;
+    position: fixed; /* Preenche a tela toda */
+    top: 0;
+    left: 0;
     width: 100%;
     height: 100%;
-    background-color: #000; /* Fundo padrão preto */
+    display: block;
+    z-index: 10; /* Fica no fundo */
+    background-color: #000; 
 }
 
+/* O Menu e o Game/HUD devem ter z-index maior para ficarem por cima do Canvas */
 #menu, #game {
-    position: absolute;
+    position: fixed; /* Fica fixo por cima de tudo */
     top: 0;
     left: 0;
     width: 100%;
@@ -36,11 +38,13 @@ body {
     text-align: center;
     box-sizing: border-box;
     padding: 20px;
+    z-index: 30; /* Fica acima do Canvas */
 }
 
+/* --- Estilização do Menu --- */
 #menu h1 {
     font-size: 3em;
-    color: #ffcc00; /* Dourado */
+    color: #ffcc00; 
     margin-bottom: 40px;
     text-shadow: 0 0 10px #ffcc00, 0 0 20px rgba(255, 204, 0, 0.5);
 }
@@ -48,7 +52,7 @@ body {
 #menu input[type="text"] {
     padding: 15px;
     margin-bottom: 20px;
-    border: 3px solid #00ffff; /* Ciano futurista */
+    border: 3px solid #00ffff; 
     background-color: #1a1a1a;
     color: #fff;
     font-size: 1.2em;
@@ -61,7 +65,7 @@ body {
 #menu button {
     padding: 15px 30px;
     margin: 10px;
-    background-color: #00ff00; /* Verde neon */
+    background-color: #00ff00; 
     color: #000;
     border: none;
     border-radius: 5px;
@@ -80,142 +84,107 @@ body {
 }
 
 #resetDataBtn {
-    background-color: #ff4444; /* Vermelho para reset */
-    box-shadow: 0 0 10px rgba(255, 68, 68, 0.6);
+    background-color: #ff4444; 
 }
-
 #resetDataBtn:hover {
     background-color: #cc3333;
-    box-shadow: 0 0 15px rgba(255, 68, 68, 0.8);
 }
 
 #debug {
-    position: absolute;
-    bottom: 10px;
+    position: fixed;
+    top: 10px;
     left: 10px;
-    color: rgba(255, 255, 255, 0.5);
-    font-size: 0.8em;
-    z-index: 100;
+    padding: 5px;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 40; /* Sempre no topo */
 }
 
-#game {
-    display: none; /* Escondido por padrão, mostrado no start */
-    background-color: transparent; /* O canvas vai desenhar o fundo */
-}
 
-/* NOVO HUD STYLES */
+/* --- Estilização do HUD (Container) --- */
 #hud-container {
-    position: absolute;
-    top: 0;
+    position: absolute; /* Relativo ao #game pai */
+    bottom: 0;
     left: 0;
     width: 100%;
-    height: 100%;
-    pointer-events: none; /* Permite interagir com o canvas por baixo */
-    font-family: 'Press Start 2P', cursive;
-    color: #00ffff; /* Ciano vibrante para o HUD */
-    font-size: 1.2em;
-    text-shadow: 0 0 5px rgba(0, 255, 255, 0.5);
+    padding: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    box-sizing: border-box;
+    z-index: 25; /* Fica acima do Canvas */
+    pointer-events: none; /* Permite interagir com o Canvas por baixo */
 }
 
 .hud-item {
-    padding: 5px 10px;
-    background-color: rgba(0, 0, 0, 0.6);
-    border: 1px solid #00ffff;
-    box-shadow: 0 0 8px rgba(0, 255, 255, 0.4);
-    margin: 5px;
+    padding: 5px 15px;
+    font-size: 1.1em;
+    color: #fff;
 }
 
-/* Top-Left: Pos e Lap */
-#hud-top-left {
-    position: absolute;
-    top: 20px;
-    left: 20px;
+/* --- Speedometer --- */
+#hud-speedometer {
     display: flex;
     flex-direction: column;
+    align-items: center;
+    pointer-events: none;
+    padding-bottom: 5px;
 }
 
-/* Minimapa */
+#hud-speed-display {
+    font-size: 3em;
+    font-weight: bold;
+    color: #00ffff;
+    text-shadow: 0 0 10px #00ffff;
+}
+
+#hud-rpm-bar {
+    display: flex;
+    height: 15px;
+    width: 250px;
+    margin-top: 5px;
+    background-color: #333;
+    border: 1px solid #777;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.rpm-segment {
+    flex-grow: 1;
+    margin: 0 1px;
+    background-color: #555;
+    transition: background-color 0.1s;
+}
+.rpm-segment:first-child { margin-left: 0; }
+.rpm-segment:last-child { margin-right: 0; }
+
+
+.rpm-segment.active-green { background-color: #00ff00; }
+.rpm-segment.active-yellow { background-color: #ffcc00; }
+.rpm-segment.active-red { background-color: #ff3b3b; }
+
+/* --- Timer / Minimap --- */
+#hud-timer {
+    text-align: right;
+}
+#hud-timer .hud-item {
+    font-size: 1.2em;
+    color: #00ff00;
+}
+#hud-top-left .hud-item {
+    font-size: 1.2em;
+    color: #00ffff;
+}
+
 #hud-minimap-container {
-    position: absolute;
-    top: 20px;
-    left: 180px; /* Ajuste a posição conforme necessário */
-    width: 150px;
+    width: 100px;
     height: 150px;
-    background-color: rgba(0, 0, 0, 0.7);
-    border: 2px solid #00ffff;
-    box-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
-    overflow: hidden; /* Garante que o minimapa não saia do container */
+    border: 2px solid white;
+    box-sizing: content-box;
+    background-color: rgba(0, 0, 0, 0.5);
+    pointer-events: none;
 }
-
 #hudMinimap {
     width: 100%;
     height: 100%;
     display: block;
 }
-
-/* Speedometer (velocidade e RPM) */
-#hud-speedometer {
-    position: absolute;
-    top: 20px;
-    right: 20px;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-}
-
-#hud-speed-display {
-    background-color: #ff3b3b; /* Vermelho para velocidade */
-    color: #fff;
-    padding: 10px 15px;
-    margin-bottom: 5px;
-    border: 2px solid #ff0000;
-    box-shadow: 0 0 10px rgba(255, 0, 0, 0.6);
-    font-size: 1.8em;
-    display: flex;
-    align-items: baseline;
-}
-
-#hudSpeedVal {
-    min-width: 80px; /* Garante espaço para 3 dígitos */
-    text-align: right;
-}
-
-.unit {
-    font-size: 0.6em;
-    margin-left: 5px;
-}
-
-#hud-rpm-bar {
-    display: flex;
-    width: 150px; /* Largura total da barra */
-    height: 20px;
-    background-color: rgba(0, 0, 0, 0.6);
-    border: 1px solid #00ffff;
-    box-shadow: 0 0 8px rgba(0, 255, 255, 0.4);
-}
-
-.rpm-segment {
-    flex-grow: 1;
-    background-color: #444; /* Cor de segmento inativo */
-    margin: 1px;
-    transition: background-color 0.1s ease-out;
-}
-
-/* Cores dos segmentos RPM ativos */
-.rpm-segment.active-green { background-color: #00ff00; }
-.rpm-segment.active-yellow { background-color: #ffff00; }
-.rpm-segment.active-red { background-color: #ff0000; }
-
-
-/* Timer */
-#hud-timer {
-    position: absolute;
-    bottom: 20px;
-    right: 20px;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-}
-
-/* Importar uma fonte pixelada (exemplo do Google Fonts) */
-@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
