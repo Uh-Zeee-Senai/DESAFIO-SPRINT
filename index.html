@@ -1,30 +1,40 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-	<meta charset="UTF-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Top Gear JS</title>
-	<link rel="stylesheet" href="style.css">
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width,initial-scale=1" />
+	<title>Free Gear — Fases</title>
+	<link rel="stylesheet" href="style.css" />
 </head>
 <body>
-
-	<!-- ===== MENU INICIAL ===== -->
+	<!-- LOGIN / MENU -->
 	<div id="menu" class="menu">
-		<h1>🏁 Top Gear JS</h1>
-		<label for="playerName">Digite seu nome:</label>
-		<input type="text" id="playerName" placeholder="Seu nome...">
-		<button id="startBtn">Start</button>
+		<h1>Free Gear — Corrida por Fases</h1>
+		<input id="playerName" placeholder="Digite seu nome (salvo localmente)" />
+		<div class="menu-row">
+			<button id="startBtn">Start Race</button>
+			<button id="resetDataBtn">Limpar nome salvo</button>
+		</div>
+		<small>Use ← → para guiar, ↑ para acelerar, ↓ para frear.</small>
 	</div>
 
-	<!-- ===== HUD ===== -->
-	<div id="hud" class="hud">
-		<span id="hudPlayer">Player</span>
-		<span id="hudSpeed">Vel: 0 km/h</span>
-		<span id="hudDist">Distância: 0</span>
-	</div>
+	<!-- GAME -->
+	<div id="game" class="game" style="display:none;">
+		<canvas id="gameCanvas"></canvas>
 
-	<!-- ===== JOGO ===== -->
-	<canvas id="gameCanvas" width="800" height="600"></canvas>
+		<div id="hud" class="hud">
+			<div id="hudLeft">
+				<div><strong id="hudPlayer">Jogador</strong></div>
+				<div>Fase: <span id="hudPhase">—</span></div>
+				<div>Volta: <span id="hudLap">0</span></div>
+			</div>
+			<div id="hudRight">
+				<div>Velocidade: <span id="hudSpeed">0</span></div>
+				<div>Distância p/ linha: <span id="hudDist">0</span></div>
+				<div>Posição: <span id="hudPos">—</span></div>
+			</div>
+		</div>
+	</div>
 
 	<script src="script.js"></script>
 </body>
