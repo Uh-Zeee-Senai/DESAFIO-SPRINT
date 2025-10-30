@@ -35,7 +35,8 @@ const CONFIG = {
 	BG_SCROLL_SPEED_MULT: 0.1, // Multiplicador para velocidade de scroll do background (parallax)
 
     // NOVO: Parâmetros de Curva/Perspectiva
-    PERSPECTIVE_SENSITIVITY: 0.4, // Quão rápido a pista curva (0.0 a 1.0)
+    CURVE_SENSITIVITY: 0.02, // Quão rápido a pista curva (0.0 a 1.0)
+    MAX_CURVE_OFFSET: 0.4,   // Offset máximo do ponto de fuga (0.0 a 1.0, % da largura da tela)
     LANE_LINES_PER_SLICE: 4 // Quantas fatias para uma linha tracejada
 };
 
@@ -54,8 +55,8 @@ let boostRemaining = 0;
 
 let trackScrollOffset = 0;
 let bgScrollOffset = 0;
-// NOVO: Offset de centro da pista (para simular curvas)
-let perspectiveCenterOffset = 0;
+// NOVO: Ponto de fuga da perspectiva (0 = centro, -1 = esquerda, 1 = direita)
+let vanishingPointX = 0;
 
 
 // === CARREGA IMAGENS (fallbacks se não existirem) ===
@@ -170,7 +171,7 @@ function initRace(playerName) {
 	currentSectorIndex = 0; sectorProgress = 0; laps = 0; easter = null; obstacles = []; boostRemaining = 0;
 	trackScrollOffset = 0;
 	bgScrollOffset = 0;
-    perspectiveCenterOffset = 0; // Reset do offset de curva
+    vanishingPointX = 0; // Reset do ponto de fuga
 
 	debug("Race initialized. Images ok? player=" + IMG.player.complete + " bot=" + IMG.bot.complete);
 	updateHUD();
@@ -205,13 +206,14 @@ function update(dt, deltaMs) {
 	if (keys["ArrowLeft"] || keys["a"]) lateral = -1;
 	if (keys["ArrowRight"] || keys["d"]) lateral = 1;
 
-	// Movimento lateral
+	// Movimento lateral do carro na tela
 	player.x += lateral * CONFIG.TURN_SPEED * (1 + (player.speed / CONFIG.MAX_SPEED)) * dt;
-	player.angle = lateral * -0.18 * (player.speed / CONFIG.MAX_SPEED);
+	player.angle = lateral * -0.18 * (player.speed / CONFIG.MAX_SPEED); // Inclina o carro ao virar
 
-	// NOVO: Ajusta o centro da perspectiva ao virar (Curva)
-	const targetOffset = lateral * (W * 0.2); // Alvo de distorção (20% da tela)
-	perspectiveCenterOffset += (targetOffset - perspectiveCenterOffset) * CONFIG.PERSPECTIVE_SENSITIVITY * dt;
+	// NOVO: Ajusta o ponto de fuga da perspectiva (curva da pista)
+    const targetVanishPoint = lateral * CONFIG.MAX_CURVE_OFFSET; // Alvo do ponto de fuga (-1 a 1)
+    vanishingPointX += (targetVanishPoint - vanishingPointX) * CONFIG.CURVE_SENSITIVITY * dt;
+    vanishingPointX = clamp(vanishingPointX, -CONFIG.MAX_CURVE_OFFSET, CONFIG.MAX_CURVE_OFFSET);
 	
 	// Clamp player to road area
 	const roadMargin = W * (1 - CONFIG.ROAD_WIDTH_PERC) / 2;
@@ -256,9 +258,8 @@ function update(dt, deltaMs) {
 	const progInc = player.speed * 18 * dt;
 	sectorProgress += progInc;
 	
-	// Atualiza o offset de scroll da pista e do background
 	trackScrollOffset = (trackScrollOffset + player.speed * CONFIG.ROAD_SCROLL_SPEED_MULT * dt) % (H / 2);
-	bgScrollOffset = (bgScrollOffset + player.speed * CONFIG.BG_SCROLL_SPEED_MULT * dt) % H;
+	bgScrollOffset = (bgScrollOffset + player.speed * CONFIG.BG_SCROLL_SPEED_MULT * dt + (vanishingPointX * player.speed * 2) ) % H; // NOVO: Fundo também scrolla lateralmente com a curva
 
 	if (sectorProgress >= sector.length) {
 		sectorProgress -= sector.length;
@@ -273,6 +274,15 @@ function update(dt, deltaMs) {
 	// 5. Easter movement + collide
 	if (easter) {
 		easter.y += (3 * dt * 10) + (player.speed * CONFIG.ROAD_SCROLL_SPEED_MULT * dt); 
+		// NOVO: Easter Egg também é afetado pelo vanishingPointX para dar a sensação de que está na pista curva
+		const roadCenter = W/2 + vanishingPointX * W * 0.5; // Ponto central da pista no horizonte
+		const roadWidthAtEasterY = roadWidthTop + (roadWidthBottom - roadWidthTop) * ((easter.y - horizonY) / (H - horizonY));
+		const roadXLeft = roadCenter - roadWidthAtEasterY/2;
+		const roadXRight = roadCenter + roadWidthAtEasterY/2;
+
+		// Move easter lateralmente para acompanhar a curva da pista
+		easter.x += (roadCenter - (easter.x + easter.width/2)) * 0.05 * dt;
+
 		if (rectsOverlap(easter, player)) {
 			collectEaster();
 			easter = null;
@@ -310,23 +320,24 @@ function collectEaster() {
 function render() {
 	const s = CONFIG.SECTORS[currentSectorIndex];
 
-	// 1. Background (Sector Image or Color) com Parallax
+	// 1. Background (Sector Image or Color) com Parallax e Curva
 	if (s._img && s._img.complete && s._img.naturalWidth !== 0) {
-		// Desenha a imagem do setor com scroll (efeito parallax)
 		const imgRatio = s._img.width / s._img.height;
-		let imgW = W;
-		let imgH = W / imgRatio;
-		if (imgH < H) { imgH = H; imgW = H * imgRatio; }
+		let imgH = H;
+		let imgW = H * imgRatio;
+		if (imgW < W) { imgW = W; imgH = W / imgRatio; } // Garante que cobre a largura
 
-		const sourceX = (s._img.width - imgW) / 2;
-		
+		// Calcula a posição X com base no vanishingPointX (curva) e bgScrollOffset (parallax)
+		const targetBgX = (W - imgW) / 2 - (vanishingPointX * W * 0.2); // Movimento horizontal do fundo com a curva
+		const drawX1 = targetBgX;
 		const drawY1 = bgScrollOffset - imgH;
 		const drawY2 = bgScrollOffset;
 
-		ctx.drawImage(s._img, sourceX, 0, imgW, s._img.height, 0, drawY1, W, imgH);
-		ctx.drawImage(s._img, sourceX, 0, imgW, s._img.height, 0, drawY2, W, imgH);
 
-		// Overlay slight tint to blend with road
+		ctx.drawImage(s._img, 0, 0, s._img.width, s._img.height, drawX1, drawY1, imgW, imgH);
+		ctx.drawImage(s._img, 0, 0, s._img.width, s._img.height, drawX1, drawY2, imgW, imgH);
+
+
 		ctx.fillStyle = "rgba(0,0,0,0.30)";
 		ctx.fillRect(0,0,W,H);
 	} else {
@@ -343,19 +354,18 @@ function render() {
 		ctx.restore();
 	}
 
-	// 2. Draw Road (Pseudo-3D perspective com Curvas)
+	// 2. Draw Road (Pseudo-3D perspective com Curvas Free Gear-like)
 	drawRoad();
 
 	// 3. Draw easter
 	if (easter) drawItem(easter, IMG.easter, "#ffcc00", 25);
 
 	// 4. Draw bot then player
-	// Posição Y dos carros fixada para simular a pista "correndo"
 	drawCar(bot, bot.y);
 	drawCar(player, player.y);
 }
 
-// NOVO: Desenha a pista com perspectiva 3D, scroll E CURVAS
+// NOVO: Desenha a pista com perspectiva 3D, scroll E CURVAS FREE GEAR-LIKE
 function drawRoad() {
 	const roadColor = "#2b2b2b";
 	const stripesColor = "#f2f2f2";
@@ -364,16 +374,15 @@ function drawRoad() {
 	const roadWidthTop = W * 0.05;
 	const roadWidthBottom = W * CONFIG.ROAD_WIDTH_PERC;
 	const horizonY = H * 0.15;
-	const slices = 30;
-	
+	const slices = 30; // Mais fatias = mais suave
+
+    // O ponto de fuga é W/2 + (offset baseado em vanishingPointX)
+    const currentVanishPointX = W/2 + vanishingPointX * W * 0.5; // Multiplica por W * 0.5 para escala
+
     // Desenha as laterais (off-road)
     ctx.fillStyle = sideColor;
     ctx.fillRect(0, horizonY, W, H - horizonY);
 
-    // Centro da pista (W/2) + Offset de curva
-    const centerPointX = W/2 + perspectiveCenterOffset;
-
-	// Loop para desenhar as fatias da estrada
 	for (let i = 0; i < slices; i++) {
 		const tBase = i / slices;
 		const tOffset = (trackScrollOffset / (H/2)) * (1/slices);
@@ -387,69 +396,63 @@ function drawRoad() {
 		const roadWStart = roadWidthTop + (roadWidthBottom - roadWidthTop) * t;
 		const roadWEnd = roadWidthTop + (roadWidthBottom - roadWidthTop) * (t + 1/slices);
         
-        // NOVO: Aplica a curva ao centro da fatia
-        const curveFactor = 1 - t; // Curva mais forte no fundo (t=0)
-        const curveOffsetStart = perspectiveCenterOffset * curveFactor * 0.8;
-        const curveOffsetEnd = perspectiveCenterOffset * (1 - (t + 1/slices)) * 0.8; // Para a próxima fatia
+        // NOVO: Calcula o X da esquerda e direita da pista em relação ao ponto de fuga
+        // Isso cria a distorção de perspectiva de curva
+        const scaleStart = 1 - t; // Quanto mais perto (t=0), menor a escala de distorção
+        const scaleEnd = 1 - (t + 1/slices);
 
-        const centerStart = centerPointX + curveOffsetStart;
-        const centerEnd = centerPointX + curveOffsetEnd;
+        const xLeftStart = currentVanishPointX - (roadWStart / 2) / (1 + scaleStart * Math.abs(vanishingPointX) * 2);
+        const xRightStart = currentVanishPointX + (roadWStart / 2) / (1 + scaleStart * Math.abs(vanishingPointX) * 2);
 
-
-		const xStart = centerStart - roadWStart / 2;
-		const xEnd = centerEnd - roadWEnd / 2;
-        
-        const xStartRight = centerStart + roadWStart / 2;
-		const xEndRight = centerEnd + roadWEnd / 2;
+        const xLeftEnd = currentVanishPointX - (roadWEnd / 2) / (1 + scaleEnd * Math.abs(vanishingPointX) * 2);
+        const xRightEnd = currentVanishPointX + (roadWEnd / 2) / (1 + scaleEnd * Math.abs(vanishingPointX) * 2);
 
 
 		// Pista Principal
 		ctx.fillStyle = roadColor;
 		ctx.beginPath();
-		ctx.moveTo(xStart, yStart);
-		ctx.lineTo(xEnd, yEnd);
-		ctx.lineTo(xEndRight, yEnd);
-		ctx.lineTo(xStartRight, yStart);
+		ctx.moveTo(xLeftStart, yStart);
+		ctx.lineTo(xLeftEnd, yEnd);
+		ctx.lineTo(xRightEnd, yEnd);
+		ctx.lineTo(xRightStart, yStart);
 		ctx.fill();
 
 		// Faixas Laterais
-		const stripeW = 8;
+		const stripeW = 12; // Faixa mais grossa
 		ctx.fillStyle = stripesColor;
 		
         // Faixa Esquerda
 		ctx.beginPath();
-		ctx.moveTo(xStart, yStart);
-		ctx.lineTo(xEnd, yEnd);
-		ctx.lineTo(xEnd + stripeW, yEnd);
-		ctx.lineTo(xStart + stripeW, yStart);
+		ctx.moveTo(xLeftStart, yStart);
+		ctx.lineTo(xLeftEnd, yEnd);
+		ctx.lineTo(xLeftEnd + stripeW, yEnd);
+		ctx.lineTo(xLeftStart + stripeW, yStart);
 		ctx.fill();
         
         // Faixa Direita
         ctx.beginPath();
-		ctx.moveTo(xStartRight - stripeW, yStart);
-		ctx.lineTo(xEndRight - stripeW, yEnd);
-		ctx.lineTo(xEndRight, yEnd);
-		ctx.lineTo(xStartRight, yStart);
+		ctx.moveTo(xRightStart - stripeW, yStart);
+		ctx.lineTo(xRightEnd - stripeW, yEnd);
+		ctx.lineTo(xRightEnd, yEnd);
+		ctx.lineTo(xRightStart, yStart);
 		ctx.fill();
         
 		// Faixa Central tracejada
 		if (Math.floor(t * slices) % CONFIG.LANE_LINES_PER_SLICE < CONFIG.LANE_LINES_PER_SLICE/2) {
-            const dashW = 6;
+            const dashW = 10; // Faixa central mais grossa
             ctx.fillStyle = stripesColor;
             ctx.beginPath();
-            ctx.moveTo(centerStart - dashW/2, yStart);
-            ctx.lineTo(centerEnd - dashW/2, yEnd);
-            ctx.lineTo(centerEnd + dashW/2, yEnd);
-            ctx.lineTo(centerStart + dashW/2, yStart);
+            ctx.moveTo(currentVanishPointX - dashW/2, yStart);
+            ctx.lineTo(currentVanishPointX - dashW/2, yEnd);
+            ctx.lineTo(currentVanishPointX + dashW/2, yEnd);
+            ctx.lineTo(currentVanishPointX + dashW/2, yStart);
             ctx.fill();
 		}
 	}
 }
 
 // ... Resto das funções (drawItem, drawCar, updateHUD, etc.) permanecem as mesmas ...
-// (Incluindo as funções auxiliares que não tiveram alterações de lógica)
 
-// Novo: Função unificada para desenhar itens (obstáculos/easter)
 function drawItem(item, img, fallbackColor, fallbackSize) {
     if (img && img.complete && img.naturalWidth) {
 		ctx.drawImage(img, item.x, item.y, item.width || item.w, item.height || item.h);
@@ -461,7 +464,6 @@ function drawItem(item, img, fallbackColor, fallbackSize) {
 	}
 }
 
-// Desenha o Carro (com placeholder melhorado e posição Y fixa)
 function drawCar(c, fixedY) {
 	const img = (c === player && c.boosting) ? IMG.boost : c.img;
 	if (img && img.complete && img.naturalWidth) {
@@ -473,15 +475,12 @@ function drawCar(c, fixedY) {
 		ctx.drawImage(img, -c.width/2, -c.height/2, c.width, c.height);
 		ctx.restore();
 	} else {
-		// Placeholder de Carro (melhor visual)
 		ctx.save();
 		const carColor = c === player ? (c.boosting ? "#ff00d9" : "#ff3b3b") : "#4a90e2";
 		ctx.fillStyle = carColor;
 		
-        // Corpo (retângulo principal)
 		ctx.fillRect(c.x, fixedY + c.height * 0.2, c.width, c.height * 0.8);
         
-        // Cabine (menor no topo)
         ctx.fillRect(c.x + c.width * 0.15, fixedY, c.width * 0.7, c.height * 0.3);
 
 		ctx.fillStyle = "#fff";
