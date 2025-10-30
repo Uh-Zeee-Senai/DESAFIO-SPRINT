@@ -3,11 +3,11 @@
 <head>
 	<meta charset="utf-8" />
 	<meta name="viewport" content="width=device-width,initial-scale=1" />
-	<title>Free Gear — Fases</title>
+	<title>Free Gear — Fases (corrigido)</title>
 	<link rel="stylesheet" href="style.css" />
 </head>
 <body>
-	<!-- LOGIN / MENU -->
+	<!-- MENU -->
 	<div id="menu" class="menu">
 		<h1>Free Gear — Corrida por Fases</h1>
 		<input id="playerName" placeholder="Digite seu nome (salvo localmente)" />
@@ -16,9 +16,10 @@
 			<button id="resetDataBtn">Limpar nome salvo</button>
 		</div>
 		<small>Use ← → para guiar, ↑ para acelerar, ↓ para frear.</small>
+		<div id="debug" style="margin-top:12px;color:#ccc;font-size:13px;"></div>
 	</div>
 
-	<!-- GAME -->
+	<!-- JOGO -->
 	<div id="game" class="game" style="display:none;">
 		<canvas id="gameCanvas"></canvas>
 

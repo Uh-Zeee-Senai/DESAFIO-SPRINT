@@ -65,7 +65,6 @@ canvas { display:block; width:100vw; height:100vh; background:#000; }
 
 #hudLeft, #hudRight { display:flex; flex-direction:column; gap:6px; align-items:flex-start; }
 
-/* small screens tweak */
 @media (max-width:640px) {
 	.menu input { width: 80%; }
 	.hud { font-size:14px; padding:8px; }
