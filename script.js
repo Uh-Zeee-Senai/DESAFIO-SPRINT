@@ -4,7 +4,7 @@ const CONFIG = {
 	BOT_IMG: "bot.png",
 	BOOST_IMG: "supercar.png",
 	EASTER_IMG: "ea.png",
-	TRACK_BG: "pista.jpg",
+	TRACK_BG: "pista.jpg", // Imagem para o efeito parallax do fundo
 
 	// Física e controle
 	MAX_SPEED: 18,          // maior para corrida mais longa
@@ -30,7 +30,9 @@ const CONFIG = {
 	SPAWN_EASTER_MIN: 9000,
 	SPAWN_EASTER_MAX: 20000,
 	AI_VARIANCE: 0.4,       // Variação na IA
-	ROAD_WIDTH_PERC: 0.7    // Largura máxima da pista na parte de baixo
+	ROAD_WIDTH_PERC: 0.7,    // Largura máxima da pista na parte de baixo
+	ROAD_SCROLL_SPEED_MULT: 0.8, // Multiplicador para velocidade de scroll da pista
+	BG_SCROLL_SPEED_MULT: 0.1 // Multiplicador para velocidade de scroll do background (parallax)
 };
 
 // === VARIÁVEIS GLOBAIS ===
@@ -45,6 +47,12 @@ let gameRunning = false;
 let keys = {};
 let lastFrameTime = 0;
 let boostRemaining = 0; // Novo: Tempo restante de boost (ms)
+
+// NOVO: Variável para o offset de scroll da pista
+let trackScrollOffset = 0;
+// NOVO: Variável para o offset de scroll do background (parallax)
+let bgScrollOffset = 0;
+
 
 // === CARREGA IMAGENS (fallbacks se não existirem) ===
 const IMG = {
@@ -140,8 +148,8 @@ function initRace(playerName) {
 	player = {
 		name: playerName,
 		img: IMG.player,
-		x: W/2 - 140,
-		y: H - 260,
+		x: W/2 - 55, // Carro centralizado
+		y: H - 260, // Posição Y fixa
 		width: 110, height: 150,
 		speed: 0, angle: 0, boosting: false
 	};
@@ -156,6 +164,9 @@ function initRace(playerName) {
         aiTargetX: W/2 // Posição lateral alvo
 	};
 	currentSectorIndex = 0; sectorProgress = 0; laps = 0; easter = null; obstacles = []; boostRemaining = 0;
+	trackScrollOffset = 0; // Reset do scroll
+	bgScrollOffset = 0; // Reset do scroll do background
+
 	debug("Race initialized. Images ok? player=" + IMG.player.complete + " bot=" + IMG.bot.complete);
 	updateHUD();
 }
@@ -237,8 +248,14 @@ function update(dt, deltaMs) {
 
 
 	// 4. Progresso de Setor / Fase
-	const progInc = player.speed * 18 * dt;
+	// NOVO: A pista "corre" sob o carro, então o progresso é inversamente proporcional
+	const progInc = player.speed * 18 * dt; // Esta é a "distância" que percorremos
 	sectorProgress += progInc;
+	
+	// NOVO: Atualiza o offset de scroll da pista e do background
+	trackScrollOffset = (trackScrollOffset + player.speed * CONFIG.ROAD_SCROLL_SPEED_MULT * dt) % (H / 2); // % para resetar o scroll
+	bgScrollOffset = (bgScrollOffset + player.speed * CONFIG.BG_SCROLL_SPEED_MULT * dt) % H; // % para resetar o scroll do background
+
 	if (sectorProgress >= sector.length) {
 		sectorProgress -= sector.length;
 		currentSectorIndex = (currentSectorIndex + 1) % CONFIG.SECTORS.length;
@@ -251,7 +268,8 @@ function update(dt, deltaMs) {
 
 	// 5. Easter movement + collide
 	if (easter) {
-		easter.y += (3 + player.speed * 0.3) * dt * 10;
+		// NOVO: Easter egg se move baseado na velocidade do jogador e do scroll da pista
+		easter.y += (3 * dt * 10) + (player.speed * CONFIG.ROAD_SCROLL_SPEED_MULT * dt); 
 		if (rectsOverlap(easter, player)) {
 			collectEaster();
 			easter = null;
@@ -281,21 +299,31 @@ function collectEaster() {
 	if (player.boosting) return;
 	player.boosting = true;
 	player.img = IMG.boost;
-    boostRemaining = CONFIG.BOOST_DURATION; // Novo: Seta o tempo de boost
+    boostRemaining = CONFIG.BOOST_DURATION;
 	player.speed = Math.min(player.speed * CONFIG.BOOST_MULTIPLIER, CONFIG.MAX_SPEED * CONFIG.BOOST_MULTIPLIER);
-	setTimeout(()=>{
-		// A desativação é feita no loop de update agora (pelo boostRemaining)
-	}, CONFIG.BOOST_DURATION);
 }
 
 // === DRAW (Renderização Avançada de Cenário) ===
 function render() {
 	const s = CONFIG.SECTORS[currentSectorIndex];
 
-	// 1. Background (Sector Image or Color)
+	// 1. Background (Sector Image or Color) com Parallax
 	if (s._img && s._img.complete && s._img.naturalWidth !== 0) {
-		// Draw sector image full screen faded (pode ser ajustado para um efeito parallax no futuro)
-		ctx.drawImage(s._img, 0, 0, W, H);
+		// Desenha a imagem do setor com scroll (efeito parallax)
+		const imgRatio = s._img.width / s._img.height;
+		let imgW = W;
+		let imgH = W / imgRatio;
+		if (imgH < H) { imgH = H; imgW = H * imgRatio; }
+
+		const sourceX = (s._img.width - imgW) / 2; // Centraliza a imagem horizontalmente
+		
+		// NOVO: Calcula o Y de desenho com o offset de scroll
+		const drawY1 = bgScrollOffset - imgH;
+		const drawY2 = bgScrollOffset;
+
+		ctx.drawImage(s._img, sourceX, 0, imgW, s._img.height, 0, drawY1, W, imgH);
+		ctx.drawImage(s._img, sourceX, 0, imgW, s._img.height, 0, drawY2, W, imgH);
+
 		// Overlay slight tint to blend with road
 		ctx.fillStyle = "rgba(0,0,0,0.30)";
 		ctx.fillRect(0,0,W,H);
@@ -320,11 +348,12 @@ function render() {
 	if (easter) drawItem(easter, IMG.easter, "#ffcc00", 25);
 
 	// 4. Draw bot then player
-	drawCar(bot);
-	drawCar(player);
+	// NOVO: Posição Y dos carros fixada para simular a pista "correndo"
+	drawCar(bot, bot.y);
+	drawCar(player, player.y);
 }
 
-// NOVO: Desenha a pista com perspectiva 3D
+// NOVO: Desenha a pista com perspectiva 3D e efeito de scroll
 function drawRoad() {
 	const roadColor = "#2b2b2b"; // Cor da estrada
 	const stripesColor = "#f2f2f2"; // Cor das faixas
@@ -339,10 +368,18 @@ function drawRoad() {
     ctx.fillStyle = sideColor;
     ctx.fillRect(0, horizonY, W, H - horizonY);
 
+	// Loop para desenhar as fatias da estrada
 	for (let i = 0; i < slices; i++) {
-		const t = i / slices;
+		// NOVO: Ajusta o "t" para criar o efeito de scroll
+		const tBase = i / slices;
+		const tOffset = (trackScrollOffset / (H/2)) * (1/slices); // Offset proporcional ao scroll
+		const t = (tBase + tOffset) % 1; // Garante que t fique entre 0 e 1 e repita
+
+		// Se o "t" offsetado cair antes do horizonte, ajusta
+		if (horizonY + (H - horizonY) * t < horizonY) continue; 
+
 		const yStart = horizonY + (H - horizonY) * t;
-		const yEnd = horizonY + (H - horizonY) * (t + 1/slices);
+		const yEnd = horizonY + (H - horizonY) * (t + 1/slices); // Use t+1/slices para calcular o fim da fatia
 
 		const roadWStart = roadWidthTop + (roadWidthBottom - roadWidthTop) * t;
 		const roadWEnd = roadWidthTop + (roadWidthBottom - roadWidthTop) * (t + 1/slices);
@@ -379,8 +416,8 @@ function drawRoad() {
 		ctx.lineTo(xStart + roadWStart, yStart);
 		ctx.fill();
         
-		// Faixa Central tracejada (só a cada 4 fatias)
-		if (i % 4 < 2) { // 2 fatias com, 2 fatias sem
+		// Faixa Central tracejada (só a cada 4 fatias) - ajustado para o scroll
+		if (Math.floor(t * slices) % 4 < 2) { // Usa a fatia original para o padrão
             const dashW = 6;
             ctx.fillStyle = stripesColor;
             ctx.beginPath();
@@ -405,13 +442,13 @@ function drawItem(item, img, fallbackColor, fallbackSize) {
 	}
 }
 
-// Desenha o Carro (com placeholder melhorado)
-function drawCar(c) {
+// Desenha o Carro (com placeholder melhorado e posição Y fixa)
+function drawCar(c, fixedY) {
 	const img = (c === player && c.boosting) ? IMG.boost : c.img;
 	if (img && img.complete && img.naturalWidth) {
 		ctx.save();
 		const cx = c.x + c.width/2;
-		const cy = c.y + c.height/2;
+		const cy = fixedY + c.height/2; // Usa o fixedY passado
 		ctx.translate(cx, cy);
 		ctx.rotate(c.angle || 0);
 		ctx.drawImage(img, -c.width/2, -c.height/2, c.width, c.height);
@@ -423,14 +460,14 @@ function drawCar(c) {
 		ctx.fillStyle = carColor;
 		
         // Corpo (retângulo principal)
-		ctx.fillRect(c.x, c.y + c.height * 0.2, c.width, c.height * 0.8);
+		ctx.fillRect(c.x, fixedY + c.height * 0.2, c.width, c.height * 0.8);
         
         // Cabine (menor no topo)
-        ctx.fillRect(c.x + c.width * 0.15, c.y, c.width * 0.7, c.height * 0.3);
+        ctx.fillRect(c.x + c.width * 0.15, fixedY, c.width * 0.7, c.height * 0.3);
 
 		ctx.fillStyle = "#fff";
 		ctx.font = "bold 14px Arial";
-		ctx.fillText(c === player ? (c.boosting ? "BOOST" : player.name) : "BOT", c.x + 8, c.y + c.height/2 + 6);
+		ctx.fillText(c === player ? (c.boosting ? "BOOST" : c.name) : c.name, c.x + 8, fixedY + c.height/2 + 6);
 		ctx.restore();
 	}
 }
