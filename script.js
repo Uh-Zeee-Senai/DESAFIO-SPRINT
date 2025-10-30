@@ -49,15 +49,18 @@ const CONFIG = {
     ROAD_SIDE_STRIPE_WIDTH: 15,
     ROAD_CENTER_DASH_WIDTH: 12,
 
-    // NOVO: Minimapa
-    MINIMAP_SCALE: 0.005, // Escala do minimapa (quanto menor, mais distante a visão)
+    // Minimapa
+    MINIMAP_SCALE: 0.005, 
     MINIMAP_PLAYER_COLOR: "#00ff00",
     MINIMAP_BOT_COLOR: "#ff0000",
     MINIMAP_TRACK_COLOR: "#ffffff",
+    MINIMAP_TRACK_LENGTH_FACTOR: 0.00005, // NOVO: Ajusta o "tamanho" da pista no minimapa
 
-    // NOVO: Elementos 3D na pista (setas)
-    CURVE_ARROWS_COUNT: 5, // Quantas setas de curva visíveis
-    CURVE_ARROW_DIST: 2000 // Distância entre as setas
+    // Elementos 3D na pista (setas)
+    CURVE_ARROWS_COUNT: 5, 
+    CURVE_ARROW_DIST: 1500, // Distância entre as setas (reduzido para mais setas visíveis)
+
+    CAR_BASE_Y_PERC: 0.72 // NOVO: Posição Y base dos carros (72% da altura da tela)
 };
 
 // === VARIÁVEIS GLOBAIS ===
@@ -66,8 +69,8 @@ let menuDiv, gameDiv, startBtn, resetDataBtn, nameInput, debugDiv;
 
 // NOVAS REFERÊNCIAS DO HUD
 let hudPos, hudLap, hudSpeedVal, hudMinimapCanvas, hudMinimapCtx, hudTime, hudBestTime, rpmSegments;
-let gameTime = 0; // Tempo total da corrida
-let bestLapTime = Infinity; // Melhor tempo de volta
+let gameTime = 0;
+let bestLapTime = Infinity;
 
 let player, bot;
 let currentSectorIndex = 0; let sectorProgress = 0; let laps = 0;
@@ -80,10 +83,13 @@ let boostRemaining = 0;
 
 let trackScrollOffset = 0;
 let bgScrollOffset = 0;
-let vanishingPointX = 0; // Ponto de fuga da perspectiva (-1 a 1)
+let vanishingPointX = 0;
 
 // NOVO: Estrutura para elementos 3D na pista
 let trackObjects = [];
+
+// Calcula o comprimento total da pista uma vez
+let totalTrackLength = 0;
 
 
 // === CARREGA IMAGENS (fallbacks se não existirem) ===
@@ -93,7 +99,7 @@ const IMG = {
 	boost: loadIfExists(CONFIG.BOOST_IMG),
 	easter: loadIfExists(CONFIG.EASTER_IMG),
 	track: loadIfExists(CONFIG.TRACK_BG),
-    curveArrow: loadIfExists(CONFIG.CURVE_ARROW_IMG) // Carrega a imagem da seta
+    curveArrow: loadIfExists(CONFIG.CURVE_ARROW_IMG)
 };
 
 for (let s of CONFIG.SECTORS) s._img = s.img ? loadIfExists(s.img) : null;
@@ -152,7 +158,7 @@ window.addEventListener("DOMContentLoaded", () => {
 function onResize() {
 	W = window.innerWidth; H = window.innerHeight;
 	if (canvas) { canvas.width = W; canvas.height = H; }
-    if (hudMinimapCanvas) { // Redimensionar o minimapa também
+    if (hudMinimapCanvas) {
         hudMinimapCanvas.width = hudMinimapCanvas.parentElement.clientWidth;
         hudMinimapCanvas.height = hudMinimapCanvas.parentElement.clientHeight;
     }
@@ -179,39 +185,41 @@ function onStart() {
 	gameDiv.style.display = "block";
 	gameRunning = true;
 	lastFrameTime = performance.now();
-    gameTime = 0; // Reinicia o tempo da corrida
+    gameTime = 0;
 	requestAnimationFrame(gameLoop);
 	scheduleEasterSpawn();
 }
 
 function initRace(playerName) {
 	onResize();
+    totalTrackLength = CONFIG.SECTORS.reduce((sum, s) => sum + s.length, 0) * CONFIG.LAPS_TO_FINISH;
+
 	player = {
 		name: playerName,
 		img: IMG.player,
 		x: W/2 - 55,
-		y: H - 260,
+		y: H * CONFIG.CAR_BASE_Y_PERC, // NOVO: Posição Y baseada na porcentagem da tela
 		width: 110, height: 150,
 		speed: 0, angle: 0, boosting: false,
-        totalDistance: 0 // NOVO: Distância total para o minimapa
+        totalDistance: 0
 	};
 	bot = {
 		name: "Rival",
 		img: IMG.bot,
 		x: W/2 + 40,
-		y: H - 300,
+		y: H * CONFIG.CAR_BASE_Y_PERC, // NOVO: Posição Y baseada na porcentagem da tela
 		width: 110, height: 150,
 		speed: CONFIG.MAX_SPEED * 0.9,
 		aiOffset: 0,
         aiTargetX: W/2,
-        totalDistance: 0 // NOVO: Distância total para o minimapa
+        totalDistance: 0
 	};
 	currentSectorIndex = 0; sectorProgress = 0; laps = 0; easter = null; obstacles = []; boostRemaining = 0;
 	trackScrollOffset = 0;
 	bgScrollOffset = 0;
     vanishingPointX = 0;
-    trackObjects = []; // Limpa objetos 3D
-    generateTrackObjects(); // Gera novos objetos para a pista
+    trackObjects = [];
+    generateTrackObjects();
     gameTime = 0;
     bestLapTime = Infinity;
 
@@ -222,25 +230,23 @@ function initRace(playerName) {
 // NOVO: Geração de objetos 3D na pista
 function generateTrackObjects() {
     trackObjects = [];
-    let totalTrackLength = CONFIG.SECTORS.reduce((sum, s) => sum + s.length, 0) * CONFIG.LAPS_TO_FINISH;
-
+    
+    // Para simular curvas, vamos adicionar setas com offset aleatório
     for (let i = 0; i < totalTrackLength; i += CONFIG.CURVE_ARROW_DIST) {
-        // Para simplificar, vamos alternar setas para esquerda e direita, ou adicionar curvas.
-        // Em um jogo real, a pista teria dados de curva. Aqui, é uma simulação simples.
-        const isLeftCurve = Math.random() > 0.5;
+        const isLeftCurve = Math.random() > 0.5; // Alterna a direção da curva
         trackObjects.push({
             type: 'curveArrow',
             img: IMG.curveArrow,
-            // x: (isLeftCurve ? W * 0.2 : W * 0.8), // Posição lateral fixa para demonstração
-            x: W/2 + (isLeftCurve ? -W * 0.2 : W * 0.2), // Posição lateral
-            y: i, // Distância na pista
-            width: 80, height: 80,
-            angle: isLeftCurve ? Math.PI/2 : -Math.PI/2, // Rotação da seta
+            // x: W/2 + (isLeftCurve ? -W * 0.2 : W * 0.2), // Posição lateral
+            x: (isLeftCurve ? -1 : 1), // Offset lateral para a seta (-1: esquerda, 1: direita)
+            z: i, // Profundidade (distância na pista)
+            width: 80, height: 80, // Tamanho base
+            angle: isLeftCurve ? Math.PI/2 : -Math.PI/2,
             lane: isLeftCurve ? 'left' : 'right'
         });
     }
-    // Sort by y (distance) to draw correctly
-    trackObjects.sort((a,b) => b.y - a.y); // Do mais distante para o mais perto
+    // Sort by z (distance) para desenhar corretamente
+    trackObjects.sort((a,b) => b.z - a.z); // Do mais distante para o mais perto
 }
 
 // === GAME LOOP ===
@@ -249,7 +255,7 @@ function gameLoop(ts) {
 	const dt = Math.min(48, ts - lastFrameTime) / 16.6667;
 	const deltaMs = ts - lastFrameTime;
 	lastFrameTime = ts;
-    gameTime += deltaMs; // Atualiza o tempo da corrida
+    gameTime += deltaMs;
 
 	update(dt, deltaMs);
 	render();
@@ -324,8 +330,8 @@ function update(dt, deltaMs) {
 	// 4. Progresso de Setor / Fase e Scroll
 	const progInc = player.speed * 18 * dt;
 	sectorProgress += progInc;
-	player.totalDistance += progInc; // Atualiza a distância total do jogador
-    bot.totalDistance += bot.speed * 18 * dt; // Atualiza a distância total do bot
+	player.totalDistance += progInc;
+    bot.totalDistance += bot.speed * 18 * dt;
 	
 	trackScrollOffset = (trackScrollOffset + player.speed * CONFIG.ROAD_SCROLL_SPEED_MULT * dt) % (H / 2);
 	bgScrollOffset = (bgScrollOffset + player.speed * CONFIG.BG_SCROLL_SPEED_MULT * dt + (vanishingPointX * player.speed * 8) ) % H;
@@ -335,8 +341,11 @@ function update(dt, deltaMs) {
 		currentSectorIndex = (currentSectorIndex + 1) % CONFIG.SECTORS.length;
 		if (currentSectorIndex === 0) {
 			laps++;
+            // A melhor volta é o tempo da volta mais rápida.
+            // Para Free Gear, o tempo de volta é geralmente o tempo da *volta anterior*.
+            // Vamos simplificar para o tempo total de jogo até a volta ser completada.
             if (gameTime < bestLapTime) {
-                bestLapTime = gameTime; // Define o tempo de volta como o tempo total até agora
+                bestLapTime = gameTime; 
             }
             gameTime = 0; // Reinicia o tempo para a próxima volta
 			if (laps >= CONFIG.LAPS_TO_FINISH) finishRace();
@@ -346,6 +355,9 @@ function update(dt, deltaMs) {
 
 	// 5. Easter movement + collide
 	if (easter) {
+        // Para que o easter egg se mova com a perspectiva, ele precisa ter uma "profundidade" z
+        // e ser renderizado pela função drawTrackObjects ou uma similar que use projeção 3D
+        // Por enquanto, vamos manter a lógica simplificada aqui, mas a correção de perspectiva virá no draw.
 		easter.y += (3 * dt * 10) + (player.speed * CONFIG.ROAD_SCROLL_SPEED_MULT * dt); 
 
 		const roadCenter = W/2 + vanishingPointX * W * CONFIG.MAX_CURVE_OFFSET; 
@@ -363,18 +375,17 @@ function update(dt, deltaMs) {
 
     // 6. Atualiza posição dos objetos 3D na pista
     for (let obj of trackObjects) {
-        // 'obj.y' é a distância na pista.
-        // Para converter isso para a coordenada Y da tela, precisamos de uma função de perspectiva.
-        // Por enquanto, vamos simular o movimento com o scroll da pista.
-        // A lógica completa de 3D será no render.
-        // Esta parte é mais para simular que eles se movem para fora da tela.
-        if (player.speed > 0) { // Somente se o jogador estiver se movendo
-            obj.y -= player.speed * 18 * dt; // Move o objeto para "trás" na pista
+        // Move o objeto para "trás" na pista
+        obj.z -= player.speed * 18 * dt;
 
-            // Se o objeto passou muito para trás, reposiciona ele na frente
-            if (obj.y < -CONFIG.CURVE_ARROW_DIST) {
-                obj.y += CONFIG.SECTORS.reduce((sum, s) => sum + s.length, 0) * CONFIG.LAPS_TO_FINISH;
-            }
+        // Se o objeto passou muito para trás, reposiciona ele na frente
+        if (obj.z < -CONFIG.CURVE_ARROW_DIST * 2) { // Usa *2 para dar um buffer antes de reaparecer
+            obj.z += totalTrackLength;
+            // Opcional: randomize a posição X novamente ou a direção da curva
+            const isLeftCurve = Math.random() > 0.5;
+            obj.x = (isLeftCurve ? -1 : 1);
+            obj.lane = isLeftCurve ? 'left' : 'right';
+            obj.angle = isLeftCurve ? Math.PI/2 : -Math.PI/2;
         }
     }
 	
@@ -388,7 +399,13 @@ function scheduleEasterSpawn() {
 	const delay = CONFIG.SPAWN_EASTER_MIN + Math.random() * (CONFIG.SPAWN_EASTER_MAX - CONFIG.SPAWN_EASTER_MIN);
 	easterTimer = setTimeout(()=> {
 		const roadMargin = W * (1 - CONFIG.ROAD_WIDTH_PERC);
-		easter = { x: roadMargin/2 + Math.random() * (W - roadMargin - 74), y: -140, width: 74, height: 74, img: IMG.easter };
+        // O Easter Egg agora também será tratado como um objeto 3D para renderização
+		easter = { 
+            type: 'easter',
+            x: Math.random() * 2 - 1, // Posição X lateral (-1 a 1 para o centro)
+            z: player.totalDistance + 10000, // Z na pista, à frente do jogador
+            width: 74, height: 74, img: IMG.easter 
+        };
 		debug("Easter spawned");
 	}, delay);
 }
@@ -417,10 +434,8 @@ function render() {
 		const drawY1 = bgScrollOffset - imgH;
 		const drawY2 = bgScrollOffset;
 
-
 		ctx.drawImage(s._img, 0, 0, s._img.width, s._img.height, drawX1, drawY1, imgW, imgH);
 		ctx.drawImage(s._img, 0, 0, s._img.width, s._img.height, drawX1, drawY2, imgW, imgH);
-
 
 		ctx.fillStyle = "rgba(0,0,0,0.30)";
 		ctx.fillRect(0,0,W,H);
@@ -441,69 +456,94 @@ function render() {
 	// 2. Draw Road (Pseudo-3D perspective com Curvas Free Gear-like e Zoom)
 	drawRoad();
 
-    // 3. Desenha objetos 3D na pista (setas de curva)
-    drawTrackObjects();
+    // 3. Desenha objetos 3D na pista (setas de curva e easter egg)
+    // Para desenhar na ordem correta, junte todos os objetos 3D e ordene por profundidade (z)
+    let allRenderableObjects = [...trackObjects];
+    if (easter) {
+        // Se o easter egg está ativo, adicione-o também para renderização 3D
+        allRenderableObjects.push(easter);
+    }
+    allRenderableObjects.sort((a,b) => b.z - a.z); // Renderiza do mais distante para o mais perto
 
-	// 4. Draw easter
-	if (easter) drawItem(easter, IMG.easter, "#ffcc00", 25);
+    for (let obj of allRenderableObjects) {
+        if (obj.type === 'curveArrow') {
+            drawCurveArrow(obj);
+        } else if (obj.type === 'easter') {
+            drawEasterEgg3D(obj); // Nova função para desenhar Easter Egg em 3D
+        }
+    }
 
-	// 5. Draw bot then player
+	// 4. Draw bot then player (eles estão fixos no Y, então desenhe por último para sobrepor a pista)
 	drawCar(bot, bot.y);
 	drawCar(player, player.y);
 
-    // 6. Desenha o minimapa
+    // 5. Desenha o minimapa
     drawMinimap();
 }
 
-// NOVO: Desenha os objetos 3D (setas de curva)
-function drawTrackObjects() {
+
+// NOVO: Desenha um item (ex: seta de curva) com projeção 3D
+function drawCurveArrow(obj) {
     const horizonY = H * (CONFIG.BASE_HORIZON_Y_PERC - CONFIG.SPEED_ZOOM_FACTOR * (player.speed / (CONFIG.MAX_SPEED * CONFIG.BOOST_MULTIPLIER)));
     const currentVanishPointX = W/2 + vanishingPointX * W * 0.5;
 
-    for (let obj of trackObjects) {
-        // Calcula a posição Z (profundidade) do objeto
-        // Quanto maior a distância (obj.y), mais no fundo da pista ele está
-        const z = obj.y - player.totalDistance; // Distância relativa ao jogador
+    // A distância Z do objeto em relação ao jogador
+    const zRelativeToPlayer = obj.z - player.totalDistance;
 
-        // Se o objeto estiver atrás do jogador ou muito perto, não desenha
-        if (z < 0 || z > H * 5) continue; // H*5 é uma distância arbitrária para desenhar
+    // Se o objeto estiver atrás do jogador ou muito distante, não desenha
+    if (zRelativeToPlayer < 0 || zRelativeToPlayer > totalTrackLength / CONFIG.LAPS_TO_FINISH * 0.5) return; // Limita a visualização
 
-        // Convert Z (profundidade) para uma coordenada Y na tela (perspectiva)
-        // Isso é uma simplificação da projeção 3D
-        const perspectiveFactor = H / (z + 100); // +100 para evitar divisão por zero/distorção extrema
-        const displayY = horizonY + (H - horizonY) * (1 - (z / (H * 5))); // Ajuste para que Y esteja entre horizonY e H
+    // Constante de perspectiva (distância da "câmera" ao plano de projeção)
+    const perspectiveProjectionDistance = 200; // Ajuste este valor para mudar a intensidade da perspectiva
 
-        // Calcula a posição X com base na distorção da curva
-        const normalizedZ = clamp(z / (H * 5), 0, 1); // Z normalizado (0 a 1)
-        const curveOffset = vanishingPointX * W * 0.3 * (1 - normalizedZ); // Deslocamento X com base na curva e profundidade
-        const displayX = currentVanishPointX + curveOffset + (obj.x - W/2) * perspectiveFactor;
+    // Calcula a escala do objeto com base na profundidade
+    const scale = perspectiveProjectionDistance / (zRelativeToPlayer + perspectiveProjectionDistance);
 
-        const displayWidth = obj.width * perspectiveFactor;
-        const displayHeight = obj.height * perspectiveFactor;
+    // Calcula a posição X do objeto no "mundo 3D"
+    // obj.x é um offset lateral (-1 a 1), obj.x * (W/2) seria o limite da tela
+    const worldX = currentVanishPointX + (obj.x * W * 0.3) * scale; // Multiplica por 0.3 para não ir tão para o lado
 
-        // Desenha a imagem (a seta)
-        if (obj.img && obj.img.complete) {
-            ctx.save();
-            ctx.translate(displayX, displayY);
-            // Ajusta a rotação para virar para o lado da pista
-            if (obj.lane === 'left') {
-                ctx.rotate(-Math.PI / 4); // Seta apontando para cima e esquerda
-            } else {
-                ctx.rotate(Math.PI / 4); // Seta apontando para cima e direita
-            }
-            
-            ctx.drawImage(obj.img, -displayWidth / 2, -displayHeight / 2, displayWidth, displayHeight);
-            ctx.restore();
-        } else {
-            // Placeholder se a imagem não carregar
-            ctx.fillStyle = obj.lane === 'left' ? "yellow" : "orange";
-            ctx.fillRect(displayX - displayWidth/2, displayY - displayHeight/2, displayWidth, displayHeight);
-        }
+    // Calcula a posição Y do objeto no "mundo 3D"
+    const displayY = horizonY + (H - horizonY) * (1 - (zRelativeToPlayer / (totalTrackLength / CONFIG.LAPS_TO_FINISH * 0.5))); // Y mais próximo do horizonte
+
+    const displayWidth = obj.width * scale;
+    const displayHeight = obj.height * scale;
+
+    if (obj.img && obj.img.complete) {
+        ctx.save();
+        ctx.translate(worldX, displayY);
+        ctx.rotate(obj.angle); // Aplica a rotação da seta
+        ctx.drawImage(obj.img, -displayWidth / 2, -displayHeight / 2, displayWidth, displayHeight);
+        ctx.restore();
+    } else {
+        // Placeholder se a imagem não carregar
+        ctx.fillStyle = obj.lane === 'left' ? "yellow" : "orange";
+        ctx.fillRect(worldX - displayWidth/2, displayY - displayHeight/2, displayWidth, displayHeight);
     }
 }
 
+// NOVO: Desenha o Easter Egg em 3D
+function drawEasterEgg3D(obj) {
+    const horizonY = H * (CONFIG.BASE_HORIZON_Y_PERC - CONFIG.SPEED_ZOOM_FACTOR * (player.speed / (CONFIG.MAX_SPEED * CONFIG.BOOST_MULTIPLIER)));
+    const currentVanishPointX = W/2 + vanishingPointX * W * 0.5;
 
-// NOVO: Desenha a pista com distorção Free Gear Otimizada
+    const zRelativeToPlayer = obj.z - player.totalDistance;
+
+    if (zRelativeToPlayer < 0 || zRelativeToPlayer > totalTrackLength / CONFIG.LAPS_TO_FINISH * 0.5) return;
+
+    const perspectiveProjectionDistance = 200;
+    const scale = perspectiveProjectionDistance / (zRelativeToPlayer + perspectiveProjectionDistance);
+
+    const worldX = currentVanishPointX + (obj.x * W * 0.2) * scale; // Mais centralizado que as setas
+    const displayY = horizonY + (H - horizonY) * (1 - (zRelativeToPlayer / (totalTrackLength / CONFIG.LAPS_TO_FINISH * 0.5)));
+
+    const displayWidth = obj.width * scale;
+    const displayHeight = obj.height * scale;
+
+    drawItem({x: worldX - displayWidth/2, y: displayY - displayHeight/2, width: displayWidth, height: displayHeight}, obj.img, "#ffcc00", displayWidth/2);
+}
+
+
 function drawRoad() {
 	const roadColor = "#2b2b2b";
 	const stripesColor = "#f2f2f2";
@@ -512,13 +552,11 @@ function drawRoad() {
 	const roadWidthTop = W * 0.05;
 	const roadWidthBottom = W * CONFIG.ROAD_WIDTH_PERC;
     
-    // Posição do horizonte ajustada pela velocidade (Zoom)
     const speedFactor = player.speed / (CONFIG.MAX_SPEED * CONFIG.BOOST_MULTIPLIER);
 	const horizonY = H * (CONFIG.BASE_HORIZON_Y_PERC - CONFIG.SPEED_ZOOM_FACTOR * speedFactor); 
     
 	const slices = 40;
 
-    // Desenha as laterais (off-road)
     ctx.fillStyle = sideColor;
     ctx.fillRect(0, horizonY, W, H - horizonY);
 
@@ -603,42 +641,33 @@ function drawMinimap() {
     const mmH = hudMinimapCanvas.height;
     hudMinimapCtx.clearRect(0, 0, mmW, mmH);
 
-    // Desenha o "caminho" da pista no minimapa (simples, apenas uma linha)
+    // Desenha o "caminho" da pista no minimapa (um retângulo simplificado)
     hudMinimapCtx.strokeStyle = CONFIG.MINIMAP_TRACK_COLOR;
     hudMinimapCtx.lineWidth = 2;
-    hudMinimapCtx.beginPath();
-    // Simulação de uma pista circular para o minimapa (pode ser mais complexa com dados da pista real)
-    hudMinimapCtx.arc(mmW / 2, mmH / 2, mmW * 0.4, 0, Math.PI * 2); 
-    hudMinimapCtx.stroke();
+    hudMinimapCtx.strokeRect(mmW * 0.1, mmH * 0.1, mmW * 0.8, mmH * 0.8);
 
-    // Calcula a posição do jogador e bot no minimapa
-    const totalTrackLength = CONFIG.SECTORS.reduce((sum, s) => sum + s.length, 0) * CONFIG.LAPS_TO_FINISH;
+    // Calcula a posição do jogador e bot no minimapa (progresso linear)
     const playerTrackProgress = (player.totalDistance % totalTrackLength) / totalTrackLength;
     const botTrackProgress = (bot.totalDistance % totalTrackLength) / totalTrackLength;
 
-    // Converte progresso linear para posição em um círculo no minimapa
-    const playerAngle = playerTrackProgress * Math.PI * 2 - Math.PI / 2; // -PI/2 para começar no "topo"
-    const botAngle = botTrackProgress * Math.PI * 2 - Math.PI / 2;
+    // Convertendo progresso linear para uma posição Y no minimapa retangular
+    const trackVisualLength = mmH * 0.8;
+    const trackVisualStartX = mmW * 0.1 + (mmW * 0.8 / 2); // Centro horizontal da pista
+    const trackVisualStartY = mmH * 0.1 + trackVisualLength; // Parte de baixo da pista visual
 
-    const radius = mmW * 0.4;
-    const centerX = mmW / 2;
-    const centerY = mmH / 2;
-
-    // Desenha o jogador
+    // Posição do jogador
     hudMinimapCtx.fillStyle = CONFIG.MINIMAP_PLAYER_COLOR;
     hudMinimapCtx.beginPath();
-    hudMinimapCtx.arc(centerX + radius * Math.cos(playerAngle), centerY + radius * Math.sin(playerAngle), 5, 0, Math.PI * 2);
+    hudMinimapCtx.arc(trackVisualStartX, trackVisualStartY - (trackVisualLength * playerTrackProgress), CONFIG.MINIMAP_POINT_SIZE, 0, Math.PI * 2);
     hudMinimapCtx.fill();
 
-    // Desenha o bot
+    // Posição do bot
     hudMinimapCtx.fillStyle = CONFIG.MINIMAP_BOT_COLOR;
     hudMinimapCtx.beginPath();
-    hudMinimapCtx.arc(centerX + radius * Math.cos(botAngle), centerY + radius * Math.sin(botAngle), 5, 0, Math.PI * 2);
+    hudMinimapCtx.arc(trackVisualStartX, trackVisualStartY - (trackVisualLength * botTrackProgress), CONFIG.MINIMAP_POINT_SIZE, 0, Math.PI * 2);
     hudMinimapCtx.fill();
 }
 
-
-// ... Resto das funções (drawItem, drawCar, rectsOverlap, finishRace) sem alteração principal...
 
 function drawItem(item, img, fallbackColor, fallbackSize) {
     if (img && img.complete && img.naturalWidth) {
@@ -656,7 +685,7 @@ function drawCar(c, fixedY) {
 	if (img && img.complete && img.naturalWidth) {
 		ctx.save();
 		const cx = c.x + c.width/2;
-		const cy = fixedY + c.height/2;
+		const cy = fixedY + c.height/2; // fixedY agora é player.y ou bot.y
 		ctx.translate(cx, cy);
 		ctx.rotate(c.angle || 0);
 		ctx.drawImage(img, -c.width/2, -c.height/2, c.width, c.height);
@@ -683,7 +712,6 @@ function rectsOverlap(a,b) {
 	return !(a.x > b.x + (b.width || b.w) || a.x + (a.width || a.w) < b.x || a.y > b.y + (b.height || b.h) || a.y + (b.height || b.h) < b.y);
 }
 
-// NOVO: Função para formatar o tempo (MM'SS"CC)
 function formatTime(ms) {
     if (ms === Infinity) return `--'--" --`;
     const minutes = Math.floor(ms / 60000);
@@ -694,32 +722,28 @@ function formatTime(ms) {
 
 
 function updateHUD() {
-	// Posição e Volta
-	hudPos.textContent = `1/${CONFIG.SECTORS.length}`; // Posição hardcoded por enquanto
+	hudPos.textContent = `1/${CONFIG.SECTORS.length}`;
 	hudLap.textContent = `${laps}/${CONFIG.LAPS_TO_FINISH}`;
 
-	// Velocidade e RPM
 	const speedKPH = Math.round(player.speed * 10);
 	hudSpeedVal.textContent = String(speedKPH).padStart(3, '0');
 
-    // RPM Bar - Simplesmente ativa segmentos com base na velocidade
     const maxSpeedForRpm = CONFIG.MAX_SPEED * CONFIG.BOOST_MULTIPLIER;
     const rpmLevel = Math.floor((player.speed / maxSpeedForRpm) * rpmSegments.length);
 
     rpmSegments.forEach((segment, index) => {
         segment.classList.remove('active-green', 'active-yellow', 'active-red');
         if (index < rpmLevel) {
-            if (index < rpmSegments.length * 0.6) { // Verde até 60%
+            if (index < rpmSegments.length * 0.6) {
                 segment.classList.add('active-green');
-            } else if (index < rpmSegments.length * 0.85) { // Amarelo até 85%
+            } else if (index < rpmSegments.length * 0.85) {
                 segment.classList.add('active-yellow');
-            } else { // Vermelho no final
+            } else {
                 segment.classList.add('active-red');
             }
         }
     });
 
-    // Tempo
     hudTime.textContent = formatTime(gameTime);
     hudBestTime.textContent = formatTime(bestLapTime);
 }
