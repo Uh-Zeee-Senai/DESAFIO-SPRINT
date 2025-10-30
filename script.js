@@ -49,7 +49,7 @@ const CONFIG = {
     ROAD_SIDE_STRIPE_WIDTH: 15,
     ROAD_CENTER_DASH_WIDTH: 12,
 
-    // Chevrons Laterais
+    // Chevrons Laterais (Verde, inspirado no Free Gear)
     ROAD_SIDE_CHEVRON_WIDTH: 20,
     ROAD_SIDE_CHEVRON_COLOR_LIGHT: "#00ff00",
     ROAD_SIDE_CHEVRON_COLOR_DARK: "#00aa00",
@@ -173,33 +173,37 @@ function drawMenuFrame() {
 
 // === START / INIT RACE ===
 function onStart() {
+    // 1. Garante que W e H estão definidos antes de iniciar
+    onResize(); 
+    if (W === 0 || H === 0) {
+        console.error("ERRO CRÍTICO: Dimensões da tela não definidas. Recarregue a página.");
+        return; 
+    }
+
 	const name = (nameInput.value || "Piloto").trim();
 	localStorage.setItem("lastPlayer", name);
 	initRace(name);
+	
+    // 2. Transição visual
 	menuDiv.style.display = "none";
 	gameDiv.style.display = "block";
+	
+    // 3. Início do Game Loop
 	gameRunning = true;
-	lastFrameTime = performance.now();
+	lastFrameTime = performance.now(); // CRÍTICO: Inicializar antes do loop
     gameTime = 0;
 	requestAnimationFrame(gameLoop);
 	scheduleEasterSpawn();
 }
 
 function initRace(playerName) {
-	onResize();
     totalTrackLength = CONFIG.SECTORS.reduce((sum, s) => sum + s.length, 0) * CONFIG.LAPS_TO_FINISH;
-
-    // Se W ou H for zero, isso pode quebrar o jogo.
-    if (W === 0 || H === 0) {
-        console.error("ERRO: W ou H é zero. Verifique onResize().");
-        W = 800; H = 600; // Fallback
-    }
 
 	player = {
 		name: playerName,
 		img: IMG.player,
 		x: W/2 - 55,
-		y: H * CONFIG.CAR_BASE_Y_PERC, // CRÍTICO: Posição Y deve ser válida
+		y: H * CONFIG.CAR_BASE_Y_PERC,
 		width: 110, height: 150,
 		speed: 0, angle: 0, boosting: false,
         totalDistance: 0
@@ -247,11 +251,14 @@ function generateTrackObjects() {
 // === GAME LOOP ===
 function gameLoop(ts) {
 	if (!gameRunning) return;
-	const dt = Math.min(48, ts - lastFrameTime) / 16.6667;
+    
+    // CORREÇÃO CRÍTICA: Calcular deltaMs corretamente
+    const deltaMs = ts - lastFrameTime;
+	const dt = Math.min(48, deltaMs) / 16.6667;
 	lastFrameTime = ts;
-    gameTime += ts - lastFrameTime; // Corrigido: deve usar a diferença de tempo real
+    gameTime += deltaMs;
 
-	update(dt, ts - lastFrameTime); // Corrigido: passando deltaMs como segundo parâmetro
+	update(dt, deltaMs);
 	render();
 
 	requestAnimationFrame(gameLoop);
@@ -259,9 +266,9 @@ function gameLoop(ts) {
 
 // === UPDATE (gameplay) ===
 function update(dt, deltaMs) {
-    if (dt <= 0) dt = 1; // Sanidade: garante que dt não é zero
+    if (dt <= 0) dt = 1;
 
-	// 1. PLAYER CONTROLS
+	// 1. PLAYER CONTROLS (Lógica de física que move o carro e altera o KM/H)
 	if (keys["ArrowUp"] || keys["w"]) {
 		player.speed += CONFIG.ACCEL * dt;
 	} else {
@@ -270,9 +277,6 @@ function update(dt, deltaMs) {
 	if (keys["ArrowDown"] || keys["s"]) player.speed -= CONFIG.BRAKE * dt;
 
 	player.speed = clamp(player.speed, 0, CONFIG.MAX_SPEED * (player.boosting ? CONFIG.BOOST_MULTIPLIER : 1));
-
-    // Lógica de debug de velocidade
-    // debug(`Speed: ${player.speed.toFixed(2)} | dt: ${dt.toFixed(2)}`);
 
 	let lateral = 0;
 	if (keys["ArrowLeft"] || keys["a"]) lateral = -1;
@@ -298,8 +302,7 @@ function update(dt, deltaMs) {
 		}
 	}
 
-	// 3. BOT AI (Mantido como estava)
-
+	// 3. BOT AI (Mantido)
 	const sector = CONFIG.SECTORS[currentSectorIndex];
 	const aiTargetSpeed = CONFIG.MAX_SPEED * (sector.aiMult || 1) * (0.95 + Math.random()*0.08);
 	bot.speed += (aiTargetSpeed - bot.speed) * 0.02 * dt + (Math.random()-0.5) * CONFIG.AI_VARIANCE;
@@ -315,7 +318,6 @@ function update(dt, deltaMs) {
     }
 
     bot.x += (bot.aiTargetX - (bot.x + bot.width/2)) * 0.05 * dt;
-
 	bot.x = clamp(bot.x, roadMargin, W - roadMargin - bot.width);
 
 
@@ -342,7 +344,6 @@ function update(dt, deltaMs) {
 	}
 
 	// 5. Easter movement + collide (Mantido)
-
 	if (easter) {
         const roadCenter = W/2 + vanishingPointX * W * CONFIG.MAX_CURVE_OFFSET; 
         const zRelativeToPlayer = easter.z - player.totalDistance;
@@ -385,7 +386,6 @@ function render() {
 	const s = CONFIG.SECTORS[currentSectorIndex];
 
 	// 1. Background
-    // ... (Mantido o código do background) ...
 	if (s._img && s._img.complete && s._img.naturalWidth !== 0) {
 		const imgRatio = s._img.width / s._img.height;
 		let imgH = H;
@@ -433,7 +433,7 @@ function render() {
         }
     }
 
-	// 4. DRAW CARS (Desenho por último, CRÍTICO)
+	// 4. DRAW CARS (CRÍTICO: Deve aparecer)
 	drawCar(bot, bot.y);
 	drawCar(player, player.y);
 
@@ -441,7 +441,88 @@ function render() {
     drawMinimap();
 }
 
-// ... (Funções drawCurveArrow, drawEasterEgg3D, drawRoad, drawMinimap, drawItem mantidas) ...
+
+function drawCar(c, fixedY) {
+	const img = (c === player && c.boosting) ? IMG.boost : c.img;
+	if (img && img.complete && img.naturalWidth) {
+		ctx.save();
+		const cx = c.x + c.width/2;
+		const cy = fixedY + c.height/2;
+		ctx.translate(cx, cy);
+		ctx.rotate(c.angle || 0);
+		ctx.drawImage(img, -c.width/2, -c.height/2, c.width, c.height);
+		ctx.restore();
+	} else {
+        // FALLBACK DE DEBUG: DEVE APARECER SEMPRE QUE A IMAGEM FALHAR
+		ctx.save();
+		const carColor = c === player ? (c.boosting ? "#ff00d9" : "#ff3b3b") : "#4a90e2";
+		ctx.fillStyle = carColor;
+		
+        // Retângulo simples
+		ctx.fillRect(c.x, fixedY, c.width, c.height); 
+
+		ctx.fillStyle = "#fff";
+		ctx.font = "bold 14px Arial";
+		ctx.fillText(c.name, c.x + 8, fixedY + c.height/2 + 6);
+		ctx.restore();
+	}
+}
+
+// === OUTRAS FUNÇÕES (Mantidas e Otimizadas) ===
+
+function drawCurveArrow(obj) {
+    const horizonY = H * (CONFIG.BASE_HORIZON_Y_PERC - CONFIG.SPEED_ZOOM_FACTOR * (player.speed / (CONFIG.MAX_SPEED * CONFIG.BOOST_MULTIPLIER)));
+    const currentVanishPointX = W/2 + vanishingPointX * W * 0.5;
+
+    const zRelativeToPlayer = obj.z - player.totalDistance;
+
+    if (zRelativeToPlayer < 0 || zRelativeToPlayer > totalTrackLength / CONFIG.LAPS_TO_FINISH * 0.5) return;
+
+    const perspectiveProjectionDistance = 200;
+    const scale = perspectiveProjectionDistance / (zRelativeToPlayer + perspectiveProjectionDistance);
+
+    const worldX = currentVanishPointX + (obj.x * W * 0.3) * scale;
+
+    const maxDrawDistance = totalTrackLength / CONFIG.LAPS_TO_FINISH * 0.5;
+    const normalizedZ = clamp(zRelativeToPlayer / maxDrawDistance, 0, 1);
+    const displayY = horizonY + (H - horizonY) * (1 - normalizedZ);
+
+    const displayWidth = obj.width * scale;
+    const displayHeight = obj.height * scale;
+
+    if (obj.img && obj.img.complete) {
+        ctx.save();
+        ctx.translate(worldX, displayY);
+        ctx.rotate(obj.angle);
+        ctx.drawImage(obj.img, -displayWidth / 2, -displayHeight / 2, displayWidth, displayHeight);
+        ctx.restore();
+    } else {
+        ctx.fillStyle = obj.lane === 'left' ? "yellow" : "orange";
+        ctx.fillRect(worldX - displayWidth/2, displayY - displayHeight/2, displayWidth, displayHeight);
+    }
+}
+
+function drawEasterEgg3D(obj) {
+    const horizonY = H * (CONFIG.BASE_HORIZON_Y_PERC - CONFIG.SPEED_ZOOM_FACTOR * (player.speed / (CONFIG.MAX_SPEED * CONFIG.BOOST_MULTIPLIER)));
+    const currentVanishPointX = W/2 + vanishingPointX * W * 0.5;
+
+    const zRelativeToPlayer = obj.z - player.totalDistance;
+
+    if (zRelativeToPlayer < 0 || zRelativeToPlayer > totalTrackLength / CONFIG.LAPS_TO_FINISH * 0.5) return;
+
+    const perspectiveProjectionDistance = 200;
+    const scale = perspectiveProjectionDistance / (zRelativeToPlayer + perspectiveProjectionDistance);
+
+    const worldX = currentVanishPointX + (obj.x * W * 0.2) * scale;
+    const maxDrawDistance = totalTrackLength / CONFIG.LAPS_TO_FINISH * 0.5;
+    const normalizedZ = clamp(zRelativeToPlayer / maxDrawDistance, 0, 1);
+    const displayY = horizonY + (H - horizonY) * (1 - normalizedZ);
+
+    const displayWidth = obj.width * scale;
+    const displayHeight = obj.height * scale;
+
+    drawItem({x: worldX - displayWidth/2, y: displayY - displayHeight/2, width: displayWidth, height: displayHeight}, obj.img, "#ffcc00", displayWidth/2);
+}
 
 function drawRoad() {
 	const roadColor = "#2b2b2b";
@@ -557,37 +638,64 @@ function drawRoad() {
 	}
 }
 
-// === FUNÇÃO CRÍTICA DO CARRO ===
-function drawCar(c, fixedY) {
-	const img = (c === player && c.boosting) ? IMG.boost : c.img;
-	if (img && img.complete && img.naturalWidth) {
-		ctx.save();
-		const cx = c.x + c.width/2;
-		const cy = fixedY + c.height/2;
-		ctx.translate(cx, cy);
-		ctx.rotate(c.angle || 0);
-		ctx.drawImage(img, -c.width/2, -c.height/2, c.width, c.height);
-		ctx.restore();
-	} else {
-        // FALLBACK DE DEBUG: DEVE APARECER SEMPRE QUE A IMAGEM FALHAR
-		ctx.save();
-		const carColor = c === player ? (c.boosting ? "#ff00d9" : "#ff3b3b") : "#4a90e2";
-		ctx.fillStyle = carColor;
-		
-        // Retângulo simples
-		ctx.fillRect(c.x, fixedY, c.width, c.height); 
+function drawMinimap() {
+    if (!hudMinimapCtx) return;
 
-		ctx.fillStyle = "#fff";
-		ctx.font = "bold 14px Arial";
-		ctx.fillText(c.name, c.x + 8, fixedY + c.height/2 + 6);
-		ctx.restore();
+    const mmW = hudMinimapCanvas.width;
+    const mmH = hudMinimapCanvas.height;
+    hudMinimapCtx.clearRect(0, 0, mmW, mmH);
+
+    hudMinimapCtx.strokeStyle = CONFIG.MINIMAP_TRACK_COLOR;
+    hudMinimapCtx.lineWidth = 2;
+    hudMinimapCtx.strokeRect(mmW * 0.1, mmH * 0.1, mmW * 0.8, mmH * 0.8);
+
+    const playerTrackProgress = (player.totalDistance % totalTrackLength) / totalTrackLength;
+    const botTrackProgress = (bot.totalDistance % totalTrackLength) / totalTrackLength;
+
+    const trackVisualLength = mmH * 0.8;
+    const trackVisualStartX = mmW * 0.1 + (mmW * 0.8 / 2);
+    const trackVisualStartY = mmH * 0.1 + trackVisualLength;
+
+    // Posição do jogador
+    hudMinimapCtx.fillStyle = CONFIG.MINIMAP_PLAYER_COLOR;
+    hudMinimapCtx.beginPath();
+    hudMinimapCtx.arc(trackVisualStartX, trackVisualStartY - (trackVisualLength * playerTrackProgress), CONFIG.MINIMAP_POINT_SIZE, 0, Math.PI * 2);
+    hudMinimapCtx.fill();
+
+    // Posição do bot
+    hudMinimapCtx.fillStyle = CONFIG.MINIMAP_BOT_COLOR;
+    hudMinimapCtx.beginPath();
+    hudMinimapCtx.arc(trackVisualStartX, trackVisualStartY - (trackVisualLength * botTrackProgress), CONFIG.MINIMAP_POINT_SIZE, 0, Math.PI * 2);
+    hudMinimapCtx.fill();
+}
+
+function drawItem(item, img, fallbackColor, fallbackSize) {
+    if (img && img.complete && img.naturalWidth) {
+		ctx.drawImage(img, item.x, item.y, item.width || item.w, item.height || item.h);
+	} else {
+		ctx.fillStyle = fallbackColor;
+        ctx.beginPath();
+		ctx.arc(item.x + (item.width || item.w)/2, item.y + (item.height || item.h)/2, fallbackSize, 0, Math.PI*2);
+        ctx.fill();
 	}
 }
 
-// ... (Resto do código mantido: utilitários, updateHUD, finishRace) ...
+// === UTIL ===
+function rectsOverlap(a,b) {
+	if (!a || !b) return false;
+	return !(a.x > b.x + (b.width || b.w) || a.x + (a.width || a.w) < b.x || a.y > b.y + (b.height || b.h) || a.y + (b.height || b.h) < b.y);
+}
+
+function formatTime(ms) {
+    if (ms === Infinity) return `--'--" --`;
+    const minutes = Math.floor(ms / 60000);
+    const seconds = Math.floor((ms % 60000) / 1000);
+    const centiseconds = Math.floor((ms % 1000) / 10);
+    return `${String(minutes).padStart(2, '0')}'${String(seconds).padStart(2, '0')}"${String(centiseconds).padStart(2, '0')}`;
+}
+
 
 function updateHUD() {
-    // ... (Mantido o código do updateHUD, garantindo que o KM seja atualizado se a velocidade mudar) ...
 	hudPos.textContent = `1/${CONFIG.SECTORS.length}`;
 	hudLap.textContent = `${laps}/${CONFIG.LAPS_TO_FINISH}`;
 
@@ -614,4 +722,10 @@ function updateHUD() {
     hudBestTime.textContent = formatTime(bestLapTime);
 }
 
-// ... (demais funções) ...
+function finishRace() {
+	gameRunning = false;
+	alert(`${player.name}, corrida finalizada! Voltas: ${laps}/${CONFIG.LAPS_TO_FINISH}`);
+	menuDiv.style.display = "flex";
+	gameDiv.style.display = "none";
+	clearTimeout(easterTimer);
+}
