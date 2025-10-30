@@ -15,14 +15,14 @@ const CONFIG = {
 	BOOST_MULTIPLIER: 1.9,
 	BOOST_DURATION: 5000,
 
-	// Pistas / fases (aumentei as distâncias para ficarem longas)
+	// Pistas / fases (mude aqui para aumentar/diminuir)
 	SECTORS: [
-		{ name: "Rampa do Lago", color: "#dbeefd", length: 8000, aiMult: 1.05, img: "sector_lake.jpg" },
-		{ name: "Fase de Nadar", color: "#cfe8f5", length: 9000, aiMult: 1.08, img: "sector_water.jpg" },
-		{ name: "Fase da Escalada", color: "#e8e0ff", length: 8500, aiMult: 1.06, img: "sector_climb.jpg" },
-		{ name: "Fase do Espaço", color: "#c6f7c3", length: 10000, aiMult: 1.12, img: "sector_space.jpg" },
-		{ name: "Fase do Flash", color: "#fff0d6", length: 7000, aiMult: 1.15, img: "sector_flash.jpg" },
-		{ name: "Fase do Multiverso", color: "#f0d6ff", length: 11000, aiMult: 1.18, img: "sector_multi.jpg" }
+		{ name: "Rampa do Lago", color: "#dbeefd", length: 30000, aiMult: 1.05, img: "sector_lake.jpg" },
+		{ name: "Fase de Nadar", color: "#cfe8f5", length: 35000, aiMult: 1.08, img: "sector_water.jpg" },
+		{ name: "Fase da Escalada", color: "#e8e0ff", length: 40000, aiMult: 1.10, img: "sector_climb.jpg" },
+		{ name: "Fase do Espaço", color: "#c6f7c3", length: 45000, aiMult: 1.12, img: "sector_space.jpg" },
+		{ name: "Fase do Flash", color: "#fff0d6", length: 50000, aiMult: 1.15, img: "sector_flash.jpg" },
+		{ name: "Fase do Multiverso", color: "#f0d6ff", length: 60000, aiMult: 1.18, img: "sector_multi.jpg" }
 	],
 	LAPS_TO_FINISH: 2,
 
@@ -31,6 +31,15 @@ const CONFIG = {
 	SPAWN_EASTER_MAX: 20000,
 	AI_VARIANCE: 0.35 // menos caos, IA mais estável
 };
+
+// === Ajustes de progressão / mapeamento ===
+// PROGRESS_SCALE: controla quantas "unidades" do track cada unidade de speed percorre por frame.
+// Ajuste se quiser corridas mais rápidas/mais lentas.
+// Calibrei em ~0.7 para que setores com 30k-60k unidades resultem em corridas de dezenas de segundos a alguns minutos, dependendo da velocidade.
+const PROGRESS_SCALE = 0.7;
+
+// Map 1 "unidade do jogo" = 0.1 metros (configurável mentalmente).
+// Assim para HUD convertimos unidades -> km com: km = units * 0.1 / 1000 = units * 0.0001
 
 // === VARIÁVEIS GLOBAIS ===
 let canvas, ctx, W, H;
@@ -47,6 +56,9 @@ let obstacles = []; // deixamos, mas não usaremos por enquanto
 let gameRunning = false;
 let keys = {};
 let lastFrameTime = 0;
+
+// total track length (soma de setores) - calculado depois
+let TOTAL_TRACK_LENGTH = CONFIG.SECTORS.reduce((acc, s) => acc + (s.length || 0), 0);
 
 // === CARREGA IMAGENS (fallbacks se não existirem) ===
 const IMG = {
@@ -139,7 +151,9 @@ function initRace(playerName) {
 		x: W/2 - 140,
 		y: H - 260,
 		width: 110, height: 150,
-		speed: 0, angle: 0, boosting: false
+		speed: 0, angle: 0, boosting: false,
+		totalProgress: 0, // total progress along track (units)
+		lapsCompleted: 0
 	};
 	bot = {
 		name: "Rival",
@@ -148,10 +162,14 @@ function initRace(playerName) {
 		y: H - 300,
 		width: 110, height: 150,
 		speed: CONFIG.MAX_SPEED * 0.9,
-		aiOffset: 0
+		aiOffset: 0,
+		totalProgress: 0,
+		lapsCompleted: 0
 	};
 	currentSectorIndex = 0; sectorProgress = 0; laps = 0; easter = null; obstacles = [];
-	debug("Race initialized. Images ok? player=" + IMG.player.complete + " bot=" + IMG.bot.complete);
+	// recalc total track length in case CONFIG changed at runtime
+	TOTAL_TRACK_LENGTH = CONFIG.SECTORS.reduce((acc, s) => acc + (s.length || 0), 0);
+	debug("Race initialized. Images ok? player=" + IMG.player.complete + " bot=" + IMG.bot.complete + " totalTrack=" + TOTAL_TRACK_LENGTH);
 	updateHUD();
 }
 
@@ -192,8 +210,8 @@ function update(dt) {
 	// BOT AI: target speed depends on sector aiMult and distance to player
 	const sec = CONFIG.SECTORS[currentSectorIndex];
 	const baseTarget = CONFIG.MAX_SPEED * (sec.aiMult || 1);
-	// If player is ahead (x less than bot.x), bot pushes more to catch
-	const playerAhead = player.x < bot.x;
+	// If player is ahead (player.totalProgress > bot.totalProgress), bot pushes more to catch
+	const playerAhead = player.totalProgress > bot.totalProgress;
 	const catchFactor = playerAhead ? 1.05 : 0.98;
 	const noise = (Math.random() - 0.5) * CONFIG.AI_VARIANCE;
 	const targetSpeed = clamp(baseTarget * catchFactor + noise * 2, 1, CONFIG.MAX_SPEED * 1.15);
@@ -204,26 +222,46 @@ function update(dt) {
 	bot.x += (desiredX - bot.x) * 0.015 * dt;
 	bot.x = clamp(bot.x, roadMargin, W - roadMargin - bot.width);
 
-	// PROGRESS: player advances track based on speed
-	const progressInc = player.speed * 20 * dt; // scale -> meters per update
-	sectorProgress += progressInc;
+	// PROGRESS: player and bot advance track based on speed, using PROGRESS_SCALE
+	const playerProgressInc = player.speed * PROGRESS_SCALE * dt;
+	const botProgressInc = bot.speed * PROGRESS_SCALE * dt;
 
-	// Bot "progress" simulated as speed too (we won't keep separate sector progress, but compare position for winner)
-	// When sector is finished (line crossed)
-	const currentSector = CONFIG.SECTORS[currentSectorIndex];
-	if (sectorProgress >= currentSector.length) {
-		sectorProgress -= currentSector.length;
-		currentSectorIndex = (currentSectorIndex + 1) % CONFIG.SECTORS.length;
-		if (currentSectorIndex === 0) {
-			laps++;
-			if (laps >= CONFIG.LAPS_TO_FINISH) {
-				finishRace();
-				return;
-			}
+	player.totalProgress += playerProgressInc;
+	bot.totalProgress += botProgressInc;
+
+	// calculate player's current sector index & sectorProgress from totalProgress
+	let pRem = player.totalProgress % TOTAL_TRACK_LENGTH;
+	let acc = 0;
+	let newSectorIndex = 0;
+	for (let i = 0; i < CONFIG.SECTORS.length; i++) {
+		const len = CONFIG.SECTORS[i].length;
+		if (pRem < acc + len) {
+			newSectorIndex = i;
+			sectorProgress = pRem - acc;
+			break;
 		}
-		// When crossing the line: apply sector effect (slight)
+		acc += len;
+	}
+	// detect sector change
+	if (newSectorIndex !== currentSectorIndex) {
+		currentSectorIndex = newSectorIndex;
+		debug("Sector changed to: " + CONFIG.SECTORS[currentSectorIndex].name);
 		applySectorEffects(currentSectorIndex);
 	}
+
+	// laps calculation (based on player totalProgress)
+	const playerLaps = Math.floor(player.totalProgress / TOTAL_TRACK_LENGTH);
+	if (playerLaps !== player.lapsCompleted) {
+		player.lapsCompleted = playerLaps;
+		laps = player.lapsCompleted; // main laps shown = player laps
+		if (laps >= CONFIG.LAPS_TO_FINISH) {
+			finishRace();
+			return;
+		}
+	}
+
+	// bot laps (for info)
+	bot.lapsCompleted = Math.floor(bot.totalProgress / TOTAL_TRACK_LENGTH);
 
 	// EASTER movement & pickup (if exists)
 	if (easter) {
@@ -238,7 +276,6 @@ function update(dt) {
 		}
 	}
 
-	// collisions with obstacles — desabilitado por enquanto (podemos ativar depois)
 	// atualiza HUD
 	updateHUD();
 }
@@ -246,8 +283,7 @@ function update(dt) {
 // === SECTOR EFFECTS (leve) ===
 function applySectorEffects(idx) {
 	const s = CONFIG.SECTORS[idx];
-	// exemplo: pequenas mudanças que duram só na fase (você pode expandir)
-	// (aqui só notificamos; se quiser, modifique fisica global)
+	// ex: podemos ajustar parâmetros temporariamente; por enquanto só logamos
 	debug("Changed to sector: " + s.name);
 }
 
@@ -358,15 +394,22 @@ function drawCar(c) {
 function updateHUD() {
 	hudPlayer.textContent = player.name;
 	hudPhase.textContent = CONFIG.SECTORS[currentSectorIndex].name;
-	hudLap.textContent = `${laps}/${CONFIG.LAPS_TO_FINISH}`;
-	hudSpeed.textContent = Math.round(player.speed * 10) + " km/h";
-	hudDist.textContent = Math.max(0, Math.floor(CONFIG.SECTORS[currentSectorIndex].length - sectorProgress)) + "m";
-	hudPos.textContent = (player.x < bot.x) ? "1º" : "2º";
+	hudLap.textContent = `${player.lapsCompleted}/${CONFIG.LAPS_TO_FINISH}`;
+	// speed mapping -> km/h approximation
+	const speedKmh = Math.round(player.speed * 15); // factor tuned (player.speed * 15 ≈ realistic km/h)
+	hudSpeed.textContent = speedKmh + " km/h";
+	// distance remaining in current sector (units -> meters -> km)
+	const remainingUnits = Math.max(0, CONFIG.SECTORS[currentSectorIndex].length - sectorProgress);
+	const remainingMeters = remainingUnits * 0.1; // 1 unit = 0.1 m
+	const remainingKm = (remainingMeters / 1000);
+	hudDist.textContent = remainingKm.toFixed(2) + " km";
+	// position by totalProgress
+	hudPos.textContent = (player.totalProgress >= bot.totalProgress) ? "1º" : "2º";
 }
 
 function finishRace() {
 	gameRunning = false;
-	alert(`${player.name}, corrida finalizada! Voltas: ${laps}/${CONFIG.LAPS_TO_FINISH}`);
+	alert(`${player.name}, corrida finalizada! Voltas: ${player.lapsCompleted}/${CONFIG.LAPS_TO_FINISH}`);
 	menuDiv.style.display = "flex";
 	gameDiv.style.display = "none";
 	clearTimeout(easterTimer);
