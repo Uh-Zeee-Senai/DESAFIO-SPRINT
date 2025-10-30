@@ -2,8 +2,8 @@
 const CONFIG = {
 	PLAYER_IMG: "ngtr.png",
 	BOT_IMG: "bot.png",
-	BOOST_IMG: "supercar.png",
-	EASTER_IMG: "ea.png",
+	BOOST_IMG: "supercar.png", // A imagem do carro turbo/boost
+	EASTER_IMG: "ea.png",      // A imagem do próprio easter egg na pista
 	TRACK_BG: "pista.jpg", 
     CURVE_ARROW_IMG: "curve_arrow.png",
 
@@ -67,7 +67,7 @@ const CONFIG = {
     CURVE_ARROWS_COUNT: 5, 
     CURVE_ARROW_DIST: 1500,
 
-    CAR_BASE_Y_PERC: 0.72 // Posição Y base dos carros
+    CAR_BASE_Y_PIXELS: 500 // NOVO: Posição Y fixa em pixels para debug do carro. Será ajustado por H.
 };
 
 // === VARIÁVEIS GLOBAIS ===
@@ -93,8 +93,8 @@ let totalTrackLength = 0;
 const IMG = {
 	player: loadIfExists(CONFIG.PLAYER_IMG),
 	bot: loadIfExists(CONFIG.BOT_IMG),
-	boost: loadIfExists(CONFIG.BOOST_IMG),
-	easter: loadIfExists(CONFIG.EASTER_IMG),
+	boost: loadIfExists(CONFIG.BOOST_IMG), // Carrega a imagem do carro turbo
+	easter: loadIfExists(CONFIG.EASTER_IMG), // Carrega a imagem do próprio easter egg (item a ser coletado)
 	track: loadIfExists(CONFIG.TRACK_BG),
     curveArrow: loadIfExists(CONFIG.CURVE_ARROW_IMG)
 };
@@ -173,7 +173,6 @@ function drawMenuFrame() {
 
 // === START / INIT RACE ===
 function onStart() {
-    // 1. Garante que W e H estão definidos antes de iniciar
     onResize(); 
     if (W === 0 || H === 0) {
         console.error("ERRO CRÍTICO: Dimensões da tela não definidas. Recarregue a página.");
@@ -184,13 +183,11 @@ function onStart() {
 	localStorage.setItem("lastPlayer", name);
 	initRace(name);
 	
-    // 2. Transição visual
 	menuDiv.style.display = "none";
 	gameDiv.style.display = "block";
 	
-    // 3. Início do Game Loop
 	gameRunning = true;
-	lastFrameTime = performance.now(); // CRÍTICO: Inicializar antes do loop
+	lastFrameTime = performance.now();
     gameTime = 0;
 	requestAnimationFrame(gameLoop);
 	scheduleEasterSpawn();
@@ -203,7 +200,7 @@ function initRace(playerName) {
 		name: playerName,
 		img: IMG.player,
 		x: W/2 - 55,
-		y: H * CONFIG.CAR_BASE_Y_PERC,
+		y: H - CONFIG.CAR_BASE_Y_PIXELS, // Ajustado para ser mais visível na base da tela
 		width: 110, height: 150,
 		speed: 0, angle: 0, boosting: false,
         totalDistance: 0
@@ -212,7 +209,7 @@ function initRace(playerName) {
 		name: "Rival",
 		img: IMG.bot,
 		x: W/2 + 40,
-		y: H * CONFIG.CAR_BASE_Y_PERC,
+		y: H - CONFIG.CAR_BASE_Y_PIXELS, // Ajustado para ser mais visível
 		width: 110, height: 150,
 		speed: CONFIG.MAX_SPEED * 0.9,
 		aiOffset: 0,
@@ -227,7 +224,7 @@ function initRace(playerName) {
     gameTime = 0;
     bestLapTime = Infinity;
 
-	debug("Race initialized. Player Y: " + player.y);
+	debug("Race initialized. Player Y: " + player.y + ". Car base pixels: " + CONFIG.CAR_BASE_Y_PIXELS);
 	updateHUD();
 }
 
@@ -252,7 +249,6 @@ function generateTrackObjects() {
 function gameLoop(ts) {
 	if (!gameRunning) return;
     
-    // CORREÇÃO CRÍTICA: Calcular deltaMs corretamente
     const deltaMs = ts - lastFrameTime;
 	const dt = Math.min(48, deltaMs) / 16.6667;
 	lastFrameTime = ts;
@@ -268,7 +264,7 @@ function gameLoop(ts) {
 function update(dt, deltaMs) {
     if (dt <= 0) dt = 1;
 
-	// 1. PLAYER CONTROLS (Lógica de física que move o carro e altera o KM/H)
+	// 1. PLAYER CONTROLS
 	if (keys["ArrowUp"] || keys["w"]) {
 		player.speed += CONFIG.ACCEL * dt;
 	} else {
@@ -343,7 +339,7 @@ function update(dt, deltaMs) {
 		}
 	}
 
-	// 5. Easter movement + collide (Mantido)
+	// 5. Easter movement + collide
 	if (easter) {
         const roadCenter = W/2 + vanishingPointX * W * CONFIG.MAX_CURVE_OFFSET; 
         const zRelativeToPlayer = easter.z - player.totalDistance;
@@ -365,7 +361,7 @@ function update(dt, deltaMs) {
         }
 	}
 
-    // 6. Atualiza posição dos objetos 3D na pista (Mantido)
+    // 6. Atualiza posição dos objetos 3D na pista
     for (let obj of trackObjects) {
         obj.z -= player.speed * 18 * dt;
         if (obj.z < -CONFIG.CURVE_ARROW_DIST * 2) {
@@ -433,9 +429,18 @@ function render() {
         }
     }
 
-	// 4. DRAW CARS (CRÍTICO: Deve aparecer)
+	// 4. DRAW CARS (CRÍTICO: DEVE APARECER AGORA)
 	drawCar(bot, bot.y);
 	drawCar(player, player.y);
+
+    // DEBUG VISUAL: Desenha um círculo no player.y para verificar a posição
+    ctx.fillStyle = "red";
+    ctx.beginPath();
+    ctx.arc(player.x + player.width / 2, player.y + player.height / 2, 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "white";
+    ctx.fillText("Player Y: " + player.y.toFixed(2), player.x, player.y - 10);
+    // FIM DO DEBUG VISUAL
 
     // 5. Desenha o minimapa
     drawMinimap();
@@ -458,8 +463,8 @@ function drawCar(c, fixedY) {
 		const carColor = c === player ? (c.boosting ? "#ff00d9" : "#ff3b3b") : "#4a90e2";
 		ctx.fillStyle = carColor;
 		
-        // Retângulo simples
-		ctx.fillRect(c.x, fixedY, c.width, c.height); 
+        // Retângulo simples e menor para facilitar a visualização se as imagens falharem
+		ctx.fillRect(c.x + c.width * 0.1, fixedY + c.height * 0.1, c.width * 0.8, c.height * 0.8); 
 
 		ctx.fillStyle = "#fff";
 		ctx.font = "bold 14px Arial";
@@ -468,7 +473,7 @@ function drawCar(c, fixedY) {
 	}
 }
 
-// === OUTRAS FUNÇÕES (Mantidas e Otimizadas) ===
+// === OUTRAS FUNÇÕES (Mantidas) ===
 
 function drawCurveArrow(obj) {
     const horizonY = H * (CONFIG.BASE_HORIZON_Y_PERC - CONFIG.SPEED_ZOOM_FACTOR * (player.speed / (CONFIG.MAX_SPEED * CONFIG.BOOST_MULTIPLIER)));
