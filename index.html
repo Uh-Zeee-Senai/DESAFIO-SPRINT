@@ -13,7 +13,7 @@
     <div id="menu">
         <h1>Next-Gen Turbo Racing</h1>
         <input type="text" id="playerName" placeholder="Seu nome de piloto">
-        <button id="startBtn">Começar Corrida</button>
+        <button id="startGameBtn">Começar Corrida</button>
         <button id="resetDataBtn">Limpar Nome Salvo</button>
         <div id="debug"></div> 
     </div>
@@ -21,8 +21,8 @@
     <div id="game" style="display: none;">
         <div id="hud-container">
             <div id="hud-top-left">
-                <div class="hud-item">POS <span id="hudPos">1/1</span></div>
-                <div class="hud-item">LAP <span id="hudLap">0/2</span></div>
+                <div id="pos-display" class="hud-item">POS 1/1</div>
+                <div id="lap-display" class="hud-item">LAP 0/2</div>
             </div>
             <div id="hud-minimap-container">
                 <canvas id="hudMinimap"></canvas>
@@ -38,11 +38,12 @@
                     <div class="rpm-segment"></div>
                     <div class="rpm-segment"></div>
                     <div class="rpm-segment"></div>
+                    <div class="rpm-segment"></div>
                 </div>
             </div>
             <div id="hud-timer">
-                <div class="hud-item">TIME <span id="hudTime">00'00"00</span></div>
-                <div class="hud-item">BEST <span id="hudBestTime">--'--" --</span></div>
+                <div id="hudTime" class="hud-item">TIME 00'00"00</div>
+                <div id="hudBestTime" class="hud-item">BEST --'--" --</div>
             </div>
         </div>
     </div>

@@ -154,17 +154,19 @@ window.addEventListener("DOMContentLoaded", () => {
     // 🔑 Captura Correta de TODOS os elementos DOM
     DOM.menuDiv = document.getElementById("menu"); 
     DOM.gameDiv = document.getElementById("game"); 
-    DOM.startBtn = document.getElementById("startGameBtn"); // CRÍTICO: ID CORRIGIDO
+    // 🔑 CORRIGIDO: Agora busca o ID que o script.js espera
+    DOM.startBtn = document.getElementById("startGameBtn"); 
     DOM.resetDataBtn = document.getElementById("resetDataBtn");
     DOM.nameInput = document.getElementById("playerName");
     DOM.debugDiv = document.getElementById("debug");
 
+    // 🛠️ AJUSTADO: Capturando os IDs de HUD corrigidos no HTML
     DOM.hudPos = document.getElementById("pos-display"); 
     DOM.hudLap = document.getElementById("lap-display"); 
-    DOM.hudSpeedVal = document.getElementById("hud-speed-display"); 
+    DOM.hudSpeedVal = document.getElementById("hudSpeedVal"); 
     DOM.hudMinimapCanvas = document.getElementById("hudMinimap");
-    DOM.hudTime = document.getElementById("time-display"); 
-    DOM.hudBestTime = document.getElementById("best-display"); 
+    DOM.hudTime = document.getElementById("hudTime"); 
+    DOM.hudBestTime = document.getElementById("hudBestTime"); 
     DOM.rpmSegments = document.querySelectorAll("#hud-rpm-bar .rpm-segment");
 
     if (DOM.hudMinimapCanvas) {
@@ -175,6 +177,7 @@ window.addEventListener("DOMContentLoaded", () => {
     if (last && DOM.nameInput) DOM.nameInput.value = last;
 
     // Event listeners
+    // 🔑 O evento agora será anexado porque DOM.startBtn não é mais null.
     if (DOM.startBtn) DOM.startBtn.addEventListener("click", onStart);
     if (DOM.resetDataBtn) DOM.resetDataBtn.addEventListener("click", ()=>{ localStorage.removeItem("lastPlayer"); localStorage.removeItem("bestTime"); localStorage.removeItem("bestTimeMs"); bestLapTime = Infinity; DOM.nameInput.value=""; debug("Saved data cleared"); });
 
@@ -208,7 +211,7 @@ function drawMenuFrame() {
     // Atualiza o preview do HUD Best Time
     if (DOM.hudBestTime) {
         const savedTime = localStorage.getItem('bestTime') || '--\'--"--';
-        DOM.hudBestTime.textContent = `BEST ${savedTime}`;
+        DOM.hudBestTime.textContent = savedTime; // Apenas o tempo, o texto "BEST" está no HTML
     }
     // Desenha o frame menu sempre
     requestAnimationFrame(drawMenuFrame);
@@ -776,27 +779,31 @@ function drawMinimap() {
 function updateHUD() {
     // Velocidade
     if (DOM.hudSpeedVal) {
+        // Assume que hudSpeedVal é o SPAN DENTRO do hud-speed-display
         DOM.hudSpeedVal.textContent = Math.round(player.speed * 10).toString().padStart(3, '0');
     }
     
     // Tempo
     if (DOM.hudTime) {
+        // Assume que hudTime é o SPAN DENTRO do hud-timer (Corrigido no HTML)
         DOM.hudTime.textContent = formatTime(gameTime);
     }
 
     // Melhor Tempo
     if (DOM.hudBestTime) {
+        // Assume que hudBestTime é o SPAN DENTRO do hud-timer (Corrigido no HTML)
         const displayTime = bestLapTime === Infinity ? '--\'--"--' : formatTime(bestLapTime);
-        DOM.hudBestTime.textContent = `BEST ${displayTime}`;
+        DOM.hudBestTime.textContent = displayTime;
     }
 
     // Posição/Volta (Simplificado para 1x1)
     if (DOM.hudPos) {
-        // Lógica de posição: quem tiver maior totalDistance está na frente.
+        // Assume que hudPos é o DIV corrigido (#pos-display)
         const position = player.totalDistance > bot.totalDistance ? 1 : 2;
         DOM.hudPos.textContent = `POS ${position}/2`;
     }
     if (DOM.hudLap) {
+        // Assume que hudLap é o DIV corrigido (#lap-display)
         DOM.hudLap.textContent = `LAP ${Math.min(laps + 1, CONFIG.LAPS_TO_FINISH)}/${CONFIG.LAPS_TO_FINISH}`;
     }
 
