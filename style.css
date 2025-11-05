@@ -2,20 +2,22 @@
 /* 1. RESET CRÍTICO E CONFIGURAÇÃO DA TELA */
 /* ---------------------------------------------------------------------- */
 
-/* Reset Universal: Garante que padding e border NÃO aumentem a largura/altura (RESOLVE O PROBLEMA DE BARRA DE ROLAGEM) */
+/* Reset Universal: Garante que padding e border NÃO aumentem a largura/altura */
 * {
     margin: 0;
     padding: 0;
-    box-sizing: border-box; 
+    box-sizing: border-box;
 }
+
+/* O import da fonte deve estar no HTML, mas incluído aqui para referência visual. */
+/* @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap'); */
 
 body {
     overflow: hidden; /* Remove barras de rolagem */
-    height: 100vh; /* 100% da altura da viewport */
-    width: 100vw; /* 100% da largura da viewport */
+    height: 100vh;
+    width: 100vw;
     
-    /* Estilos de fonte e fundo */
-    font-family: 'Press Start 2P', cursive; 
+    font-family: 'Press Start 2P', cursive;
     background-color: #000;
     color: #fff;
     text-shadow: 1px 1px 2px #000;
@@ -25,35 +27,34 @@ body {
 /* 2. LAYOUT DO JOGO (Canvas, Menu e HUD) */
 /* ---------------------------------------------------------------------- */
 
-/* Canvas - A Camada de Fundo (onde o jogo 3D/2D será renderizado) */
 #gameCanvas {
-    position: fixed; /* Preenche a tela toda */
+    position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
     display: block;
-    z-index: 10; /* Fica no fundo */
-    background-color: #000; 
+    z-index: 10;
+    background-color: #000;
 }
 
 /* Menu e Game (Container para HUD) - A Camada de Sobreposição */
 #menu, #game {
-    position: fixed; /* Fica fixo por cima de tudo */
+    position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
     display: flex;
     flex-direction: column;
-    justify-content: center; /* Centraliza verticalmente o conteúdo (Ex: Menu) */
-    align-items: center; /* Centraliza horizontalmente o conteúdo (Ex: Menu) */
+    justify-content: center;
+    align-items: center;
     background-color: rgba(0, 0, 0, 0.8);
     color: #eee;
     font-family: 'Press Start 2P', cursive;
     text-align: center;
     padding: 20px;
-    z-index: 30; /* Fica acima do Canvas */
+    z-index: 30;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -62,7 +63,7 @@ body {
 
 #menu h1 {
     font-size: 3em;
-    color: #ffcc00; 
+    color: #ffcc00;
     margin-bottom: 40px;
     text-shadow: 0 0 10px #ffcc00, 0 0 20px rgba(255, 204, 0, 0.5);
 }
@@ -70,7 +71,7 @@ body {
 #menu input[type="text"] {
     padding: 15px;
     margin-bottom: 20px;
-    border: 3px solid #00ffff; 
+    border: 3px solid #00ffff;
     background-color: #1a1a1a;
     color: #fff;
     font-size: 1.2em;
@@ -78,12 +79,13 @@ body {
     outline: none;
     box-shadow: 0 0 10px rgba(0, 255, 255, 0.6);
     border-radius: 5px;
+    font-family: 'Press Start 2P', cursive;
 }
 
 #menu button {
     padding: 15px 30px;
     margin: 10px;
-    background-color: #00ff00; 
+    background-color: #00ff00;
     color: #000;
     border: none;
     border-radius: 5px;
@@ -93,6 +95,7 @@ body {
     transition: all 0.2s ease-in-out;
     box-shadow: 0 0 10px rgba(0, 255, 0, 0.6);
     text-shadow: none;
+    font-family: 'Press Start 2P', cursive;
 }
 
 #menu button:hover {
@@ -102,7 +105,7 @@ body {
 }
 
 #resetDataBtn {
-    background-color: #ff4444; 
+    background-color: #ff4444;
 }
 
 #resetDataBtn:hover {
@@ -115,7 +118,7 @@ body {
     left: 10px;
     padding: 5px;
     background: rgba(0, 0, 0, 0.7);
-    z-index: 40; /* Sempre no topo */
+    z-index: 40;
     white-space: pre-wrap;
     pointer-events: none;
 }
@@ -124,27 +127,28 @@ body {
 /* 4. ESTILIZAÇÃO DO HUD (Heads-Up Display) */
 /* ---------------------------------------------------------------------- */
 
-/* Container Flexível para os Itens do HUD (Posição e Velocidade) */
 #hud-container {
-    position: absolute; /* Relativo ao #game pai (que é 100% da tela) */
-    top: 0; /* Altera a posição para o topo se quiser alinhar o HUD como nas imagens e não na base */
+    position: absolute;
+    top: 0;
     left: 0;
     width: 100%;
-    padding: 10px; /* Adiciona um respiro nas bordas internas */
+    padding: 10px;
     display: flex;
-    justify-content: space-between; /* Espaço máximo entre os itens laterais */
-    align-items: flex-start; /* Alinha os itens do HUD pelo topo */
-    z-index: 35; 
-    pointer-events: none; 
+    justify-content: space-between;
+    align-items: flex-start;
+    z-index: 35;
+    pointer-events: none;
 }
 
 .hud-item {
     padding: 5px 15px;
     font-size: 1.1em;
     color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background-color: rgba(0, 0, 0, 0.3);
 }
 
-/* Itens Agrupados no Topo Esquerdo (POS/LAP) */
+/* Topo Esquerdo (POS/LAP) */
 #hud-top-left {
     display: flex;
     flex-direction: column;
@@ -154,9 +158,11 @@ body {
 #hud-top-left .hud-item {
     font-size: 1.2em;
     color: #00ffff;
+    text-shadow: 0 0 5px #00ffff;
+    border-color: #00ffff;
 }
 
-/* Itens Agrupados no Topo Direito (SPEED/TIME) */
+/* Topo Direito (SPEED/TIMER) */
 #hud-top-right {
     display: flex;
     flex-direction: column;
@@ -166,18 +172,20 @@ body {
 
 /* Speedometer */
 #hud-speedometer {
-    /* Pode ser mantido dentro de #hud-top-right ou ajustado conforme seu HTML */
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: flex-end;
     padding-bottom: 5px;
 }
 
 #hud-speed-display {
+    padding: 5px 15px;
     font-size: 3em;
     font-weight: bold;
-    color: #ff3b3b; /* Ajuste para vermelho como nas imagens */
+    color: #ff3b3b;
     text-shadow: 0 0 10px #ff3b3b;
+    border: 3px solid #ff3b3b;
+    background-color: rgba(0, 0, 0, 0.5);
 }
 
 #hud-rpm-bar {
@@ -200,30 +208,38 @@ body {
 .rpm-segment:first-child { margin-left: 0; }
 .rpm-segment:last-child { margin-right: 0; }
 
-.rpm-segment.active-green { background-color: #00ff00; }
-.rpm-segment.active-yellow { background-color: #ffcc00; }
-.rpm-segment.active-red { background-color: #ff3b3b; }
+.rpm-segment.active-green { background-color: #00ff00; box-shadow: 0 0 3px #00ff00; }
+.rpm-segment.active-yellow { background-color: #ffcc00; box-shadow: 0 0 3px #ffcc00; }
+.rpm-segment.active-red { background-color: #ff3b3b; box-shadow: 0 0 3px #ff3b3b; }
 
 /* Timer */
 #hud-timer {
     text-align: right;
+    display: flex;
+    flex-direction: column;
+    margin-top: 10px; /* Espaço entre Velocímetro e Timer */
 }
 #hud-timer .hud-item {
+    padding: 5px 15px;
+    margin: 5px 0;
     font-size: 1.2em;
     color: #00ff00;
+    text-shadow: 0 0 5px #00ff00;
+    border-color: #00ff00;
 }
 
 
 /* Minimap */
 #hud-minimap-container {
+    position: absolute;
+    bottom: 10px; /* Mova para o canto inferior esquerdo */
+    left: 10px;
     width: 100px;
     height: 150px;
     border: 2px solid white;
     background-color: rgba(0, 0, 0, 0.5);
     pointer-events: none;
-    /* Adicionando margem para afastar do canto superior esquerdo se necessário */
-    margin-top: 10px;
-    margin-left: 10px;
+    z-index: 36;
 }
 
 #hudMinimap {

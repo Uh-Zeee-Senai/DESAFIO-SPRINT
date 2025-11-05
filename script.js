@@ -182,6 +182,7 @@ window.addEventListener("DOMContentLoaded", () => {
     if (DOM.resetDataBtn) DOM.resetDataBtn.addEventListener("click", ()=>{ localStorage.removeItem("lastPlayer"); localStorage.removeItem("bestTime"); localStorage.removeItem("bestTimeMs"); bestLapTime = Infinity; DOM.nameInput.value=""; debug("Saved data cleared"); });
 
     window.addEventListener("resize", onResize);
+    // CRÍTICO: Key listeners para input
     window.addEventListener("keydown", e => keys[e.key] = true);
     window.addEventListener("keyup", e => keys[e.key] = false);
 
@@ -211,7 +212,7 @@ function drawMenuFrame() {
     // Atualiza o preview do HUD Best Time
     if (DOM.hudBestTime) {
         const savedTime = localStorage.getItem('bestTime') || '--\'--"--';
-        DOM.hudBestTime.textContent = savedTime; // Apenas o tempo, o texto "BEST" está no HTML
+        DOM.hudBestTime.textContent = `BEST ${savedTime}`; // Adiciona o texto BEST de volta aqui caso não esteja no HTML
     }
     // Desenha o frame menu sempre
     requestAnimationFrame(drawMenuFrame);
@@ -298,6 +299,7 @@ function gameLoop(ts) {
     if (!gameRunning) return;
     
     const deltaMs = ts - lastFrameTime;
+    // CRÍTICO: dt em segundos, limitado a 1/15s para evitar bugs em travamentos
     const dt = Math.min(deltaMs / 1000, 1/15); 
     lastFrameTime = ts;
     gameTime += deltaMs;
@@ -312,14 +314,17 @@ function gameLoop(ts) {
 function update(dt, deltaMs) {
     if (dt <= 0) return;
 
-    // 1. PLAYER CONTROLS (FÍSICA CORRIGIDA)
+    // CRÍTICO: Fator de escala para normalizar as constantes de física baseadas em 60 FPS.
+    const frameFactor = dt * 60; 
+
+    // 1. PLAYER CONTROLS (FÍSICA CORRIGIDA para usar frameFactor)
     if (keys["ArrowUp"] || keys["w"]) {
-        player.speed += CONFIG.ACCEL * dt * 60; // *60 para compensar a base de 1/60s
+        player.speed += CONFIG.ACCEL * frameFactor; 
     } else {
-        player.speed -= CONFIG.FRICTION * dt * 60; 
+        player.speed -= CONFIG.FRICTION * frameFactor; 
     }
     if (keys["ArrowDown"] || keys["s"]) {
-        player.speed -= CONFIG.BRAKE * dt * 60;
+        player.speed -= CONFIG.BRAKE * frameFactor;
     } 
     
     player.speed = Math.max(0, player.speed);
@@ -329,12 +334,13 @@ function update(dt, deltaMs) {
     if (keys["ArrowLeft"] || keys["a"]) lateral = -1;
     if (keys["ArrowRight"] || keys["d"]) lateral = 1;
     
-    player.x += lateral * CONFIG.TURN_SPEED * (0.5 + (player.speed / CONFIG.MAX_SPEED) * 0.5) * dt * 60;
+    // Movimento Lateral e Curva (usa frameFactor)
+    player.x += lateral * CONFIG.TURN_SPEED * (0.5 + (player.speed / CONFIG.MAX_SPEED) * 0.5) * frameFactor;
 
     player.angle = lateral * -0.18 * (player.speed / CONFIG.MAX_SPEED); 
 
     const targetVanishPoint = lateral * CONFIG.MAX_CURVE_OFFSET;
-    vanishingPointX += (targetVanishPoint - vanishingPointX) * CONFIG.CURVE_SENSITIVITY * dt * 60;
+    vanishingPointX += (targetVanishPoint - vanishingPointX) * CONFIG.CURVE_SENSITIVITY * frameFactor;
     vanishingPointX = clamp(vanishingPointX, -CONFIG.MAX_CURVE_OFFSET, CONFIG.MAX_CURVE_OFFSET);
     
     const roadMargin = W * (1 - CONFIG.ROAD_WIDTH_PERC) / 2;
@@ -350,28 +356,29 @@ function update(dt, deltaMs) {
         }
     }
 
-    // 3. BOT AI (Mantido)
+    // 3. BOT AI
     const sector = CONFIG.SECTORS[currentSectorIndex];
     const aiTargetSpeed = CONFIG.MAX_SPEED * (sector.aiMult || 1) * (0.95 + Math.random()*0.08);
-    bot.speed += (aiTargetSpeed - bot.speed) * 0.02 * dt * 60 + (Math.random()-0.5) * CONFIG.AI_VARIANCE;
+    // Bot speed usa frameFactor
+    bot.speed += (aiTargetSpeed - bot.speed) * 0.02 * frameFactor + (Math.random()-0.5) * CONFIG.AI_VARIANCE;
     bot.speed = clamp(bot.speed, 0, CONFIG.MAX_SPEED * (sector.aiMult || 1) * 1.1);
 
     const centerLine = W / 2;
     bot.aiTargetX = centerLine + (vanishingPointX * W * 0.2) + (bot.aiOffset || 0);
 
-    bot.x += (bot.aiTargetX - (bot.x + bot.width/2)) * 0.05 * dt * 60;
+    bot.x += (bot.aiTargetX - (bot.x + bot.width/2)) * 0.05 * frameFactor;
     bot.x = clamp(bot.x, roadMargin, W - roadMargin - bot.width);
 
 
     // 4. Progresso de Setor / Fase e Scroll
-    const progInc = player.speed * 18 * dt; 
+    const progInc = player.speed * 18 * frameFactor; // CORRIGIDO: usa frameFactor
     sectorProgress += progInc;
     player.totalDistance += progInc;
-    bot.totalDistance += bot.speed * 18 * dt;
+    bot.totalDistance += bot.speed * 18 * frameFactor; // CORRIGIDO: usa frameFactor
     
     // Scroll
-    trackScrollOffset = (trackScrollOffset + player.speed * CONFIG.ROAD_SCROLL_SPEED_MULT * dt * 60) % (H / 2);
-    bgScrollOffset = (bgScrollOffset + player.speed * CONFIG.BG_SCROLL_SPEED_MULT * dt * 60 + (vanishingPointX * player.speed * 8 * dt * 60) ) % H;
+    trackScrollOffset = (trackScrollOffset + player.speed * CONFIG.ROAD_SCROLL_SPEED_MULT * frameFactor) % (H / 2);
+    bgScrollOffset = (bgScrollOffset + player.speed * CONFIG.BG_SCROLL_SPEED_MULT * frameFactor + (vanishingPointX * player.speed * 8 * frameFactor) ) % H;
 
     // Checagem de Setor/Volta
     if (sectorProgress >= sector.length) {
@@ -389,9 +396,9 @@ function update(dt, deltaMs) {
         }
     }
 
-    // 5. Easter movement + collide (Mantido)
+    // 5. Easter movement + collide
     if (easter) {
-        easter.z -= player.speed * 18 * dt; 
+        easter.z -= player.speed * 18 * frameFactor; // CORRIGIDO: usa frameFactor
 
         const roadCenter = W/2 + vanishingPointX * W * CONFIG.MAX_CURVE_OFFSET; 
         const zRelativeToPlayer = easter.z - player.totalDistance;
@@ -426,9 +433,9 @@ function update(dt, deltaMs) {
         }
     }
 
-    // 6. Atualiza posição dos objetos 3D na pista (Mantido)
+    // 6. Atualiza posição dos objetos 3D na pista
     for (let obj of trackObjects) {
-        obj.z -= player.speed * 18 * dt;
+        obj.z -= player.speed * 18 * frameFactor; // CORRIGIDO: usa frameFactor
         if (obj.z < player.totalDistance - CONFIG.CURVE_ARROW_DIST * 2) {
             obj.z += totalTrackLength;
             const isLeftCurve = Math.random() > 0.5;
@@ -447,6 +454,7 @@ function finishRace() {
     gameRunning = false;
     debug("Corrida Finalizada! Voltas: " + laps);
     if (DOM.menuDiv) DOM.menuDiv.style.display = "flex";
+    if (DOM.gameDiv) DOM.gameDiv.style.display = "none";
 }
 
 function scheduleEasterSpawn() {
@@ -779,31 +787,26 @@ function drawMinimap() {
 function updateHUD() {
     // Velocidade
     if (DOM.hudSpeedVal) {
-        // Assume que hudSpeedVal é o SPAN DENTRO do hud-speed-display
         DOM.hudSpeedVal.textContent = Math.round(player.speed * 10).toString().padStart(3, '0');
     }
     
     // Tempo
     if (DOM.hudTime) {
-        // Assume que hudTime é o SPAN DENTRO do hud-timer (Corrigido no HTML)
-        DOM.hudTime.textContent = formatTime(gameTime);
+        DOM.hudTime.textContent = `TIME ${formatTime(gameTime)}`;
     }
 
     // Melhor Tempo
     if (DOM.hudBestTime) {
-        // Assume que hudBestTime é o SPAN DENTRO do hud-timer (Corrigido no HTML)
         const displayTime = bestLapTime === Infinity ? '--\'--"--' : formatTime(bestLapTime);
-        DOM.hudBestTime.textContent = displayTime;
+        DOM.hudBestTime.textContent = `BEST ${displayTime}`;
     }
 
     // Posição/Volta (Simplificado para 1x1)
     if (DOM.hudPos) {
-        // Assume que hudPos é o DIV corrigido (#pos-display)
         const position = player.totalDistance > bot.totalDistance ? 1 : 2;
         DOM.hudPos.textContent = `POS ${position}/2`;
     }
     if (DOM.hudLap) {
-        // Assume que hudLap é o DIV corrigido (#lap-display)
         DOM.hudLap.textContent = `LAP ${Math.min(laps + 1, CONFIG.LAPS_TO_FINISH)}/${CONFIG.LAPS_TO_FINISH}`;
     }
 
