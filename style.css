@@ -4,23 +4,23 @@
 
 /* Reset Universal: Garante que padding e border NÃO aumentem a largura/altura */
 * {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
+	margin: 0;
+	padding: 0;
+	box-sizing: border-box;
 }
 
 /* O import da fonte deve estar no HTML, mas incluído aqui para referência visual. */
 /* @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap'); */
 
 body {
-    overflow: hidden; /* Remove barras de rolagem */
-    height: 100vh;
-    width: 100vw;
-    
-    font-family: 'Press Start 2P', cursive;
-    background-color: #000;
-    color: #fff;
-    text-shadow: 1px 1px 2px #000;
+	overflow: hidden; /* Remove barras de rolagem */
+	height: 100vh;
+	width: 100vw;
+	
+	font-family: 'Press Start 2P', cursive;
+	background-color: #000;
+	color: #fff;
+	text-shadow: 1px 1px 2px #000;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -28,33 +28,33 @@ body {
 /* ---------------------------------------------------------------------- */
 
 #gameCanvas {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    display: block;
-    z-index: 10;
-    background-color: #000;
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	display: block;
+	z-index: 10;
+	background-color: #000;
 }
 
 /* Menu e Game (Container para HUD) - A Camada de Sobreposição */
 #menu, #game {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    background-color: rgba(0, 0, 0, 0.8);
-    color: #eee;
-    font-family: 'Press Start 2P', cursive;
-    text-align: center;
-    padding: 20px;
-    z-index: 30;
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	background-color: rgba(0, 0, 0, 0.8);
+	color: #eee;
+	font-family: 'Press Start 2P', cursive;
+	text-align: center;
+	padding: 20px;
+	z-index: 30;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -62,65 +62,65 @@ body {
 /* ---------------------------------------------------------------------- */
 
 #menu h1 {
-    font-size: 3em;
-    color: #ffcc00;
-    margin-bottom: 40px;
-    text-shadow: 0 0 10px #ffcc00, 0 0 20px rgba(255, 204, 0, 0.5);
+	font-size: 3em;
+	color: #ffcc00;
+	margin-bottom: 40px;
+	text-shadow: 0 0 10px #ffcc00, 0 0 20px rgba(255, 204, 0, 0.5);
 }
 
 #menu input[type="text"] {
-    padding: 15px;
-    margin-bottom: 20px;
-    border: 3px solid #00ffff;
-    background-color: #1a1a1a;
-    color: #fff;
-    font-size: 1.2em;
-    text-align: center;
-    outline: none;
-    box-shadow: 0 0 10px rgba(0, 255, 255, 0.6);
-    border-radius: 5px;
-    font-family: 'Press Start 2P', cursive;
+	padding: 15px;
+	margin-bottom: 20px;
+	border: 3px solid #00ffff;
+	background-color: #1a1a1a;
+	color: #fff;
+	font-size: 1.2em;
+	text-align: center;
+	outline: none;
+	box-shadow: 0 0 10px rgba(0, 255, 255, 0.6);
+	border-radius: 5px;
+	font-family: 'Press Start 2P', cursive;
 }
 
 #menu button {
-    padding: 15px 30px;
-    margin: 10px;
-    background-color: #00ff00;
-    color: #000;
-    border: none;
-    border-radius: 5px;
-    font-size: 1.5em;
-    font-weight: bold;
-    cursor: pointer;
-    transition: all 0.2s ease-in-out;
-    box-shadow: 0 0 10px rgba(0, 255, 0, 0.6);
-    text-shadow: none;
-    font-family: 'Press Start 2P', cursive;
+	padding: 15px 30px;
+	margin: 10px;
+	background-color: #00ff00;
+	color: #000;
+	border: none;
+	border-radius: 5px;
+	font-size: 1.5em;
+	font-weight: bold;
+	cursor: pointer;
+	transition: all 0.2s ease-in-out;
+	box-shadow: 0 0 10px rgba(0, 255, 0, 0.6);
+	text-shadow: none;
+	font-family: 'Press Start 2P', cursive;
 }
 
 #menu button:hover {
-    background-color: #00cc00;
-    transform: scale(1.05);
-    box-shadow: 0 0 15px rgba(0, 255, 0, 0.8);
+	background-color: #00cc00;
+	transform: scale(1.05);
+	box-shadow: 0 0 15px rgba(0, 255, 0, 0.8);
 }
 
 #resetDataBtn {
-    background-color: #ff4444;
+	background-color: #ff4444;
 }
 
 #resetDataBtn:hover {
-    background-color: #cc3333;
+	background-color: #cc3333;
 }
 
 #debug {
-    position: fixed;
-    top: 10px;
-    left: 10px;
-    padding: 5px;
-    background: rgba(0, 0, 0, 0.7);
-    z-index: 40;
-    white-space: pre-wrap;
-    pointer-events: none;
+	position: fixed;
+	top: 10px;
+	left: 10px;
+	padding: 5px;
+	background: rgba(0, 0, 0, 0.7);
+	z-index: 40;
+	white-space: pre-wrap;
+	pointer-events: none;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -128,82 +128,82 @@ body {
 /* ---------------------------------------------------------------------- */
 
 #hud-container {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    padding: 10px;
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    z-index: 35;
-    pointer-events: none;
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	padding: 10px;
+	display: flex;
+	justify-content: space-between;
+	align-items: flex-start;
+	z-index: 35;
+	pointer-events: none;
 }
 
 .hud-item {
-    padding: 5px 15px;
-    font-size: 1.1em;
-    color: #fff;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    background-color: rgba(0, 0, 0, 0.3);
+	padding: 5px 15px;
+	font-size: 1.1em;
+	color: #fff;
+	border: 1px solid rgba(255, 255, 255, 0.2);
+	background-color: rgba(0, 0, 0, 0.3);
 }
 
 /* Topo Esquerdo (POS/LAP) */
 #hud-top-left {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
 }
 
 #hud-top-left .hud-item {
-    font-size: 1.2em;
-    color: #00ffff;
-    text-shadow: 0 0 5px #00ffff;
-    border-color: #00ffff;
+	font-size: 1.2em;
+	color: #00ffff;
+	text-shadow: 0 0 5px #00ffff;
+	border-color: #00ffff;
 }
 
 /* Topo Direito (SPEED/TIMER) */
 #hud-top-right {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    text-align: right;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	text-align: right;
 }
 
 /* Speedometer */
 #hud-speedometer {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    padding-bottom: 5px;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	padding-bottom: 5px;
 }
 
 #hud-speed-display {
-    padding: 5px 15px;
-    font-size: 3em;
-    font-weight: bold;
-    color: #ff3b3b;
-    text-shadow: 0 0 10px #ff3b3b;
-    border: 3px solid #ff3b3b;
-    background-color: rgba(0, 0, 0, 0.5);
+	padding: 5px 15px;
+	font-size: 3em;
+	font-weight: bold;
+	color: #ff3b3b;
+	text-shadow: 0 0 10px #ff3b3b;
+	border: 3px solid #ff3b3b;
+	background-color: rgba(0, 0, 0, 0.5);
 }
 
 #hud-rpm-bar {
-    display: flex;
-    height: 15px;
-    width: 250px;
-    margin-top: 5px;
-    background-color: #333;
-    border: 1px solid #777;
-    border-radius: 3px;
-    overflow: hidden;
+	display: flex;
+	height: 15px;
+	width: 250px;
+	margin-top: 5px;
+	background-color: #333;
+	border: 1px solid #777;
+	border-radius: 3px;
+	overflow: hidden;
 }
 
 .rpm-segment {
-    flex-grow: 1;
-    margin: 0 1px;
-    background-color: #555;
-    transition: background-color 0.1s;
+	flex-grow: 1;
+	margin: 0 1px;
+	background-color: #555;
+	transition: background-color 0.1s;
 }
 .rpm-segment:first-child { margin-left: 0; }
 .rpm-segment:last-child { margin-right: 0; }
@@ -214,36 +214,35 @@ body {
 
 /* Timer */
 #hud-timer {
-    text-align: right;
-    display: flex;
-    flex-direction: column;
-    margin-top: 10px; /* Espaço entre Velocímetro e Timer */
+	text-align: right;
+	display: flex;
+	flex-direction: column;
+	margin-top: 10px; /* Espaço entre Velocímetro e Timer */
 }
 #hud-timer .hud-item {
-    padding: 5px 15px;
-    margin: 5px 0;
-    font-size: 1.2em;
-    color: #00ff00;
-    text-shadow: 0 0 5px #00ff00;
-    border-color: #00ff00;
+	padding: 5px 15px;
+	margin: 5px 0;
+	font-size: 1.2em;
+	color: #00ff00;
+	text-shadow: 0 0 5px #00ff00;
+	border-color: #00ff00;
 }
-
 
 /* Minimap */
 #hud-minimap-container {
-    position: absolute;
-    bottom: 10px; /* Mova para o canto inferior esquerdo */
-    left: 10px;
-    width: 100px;
-    height: 150px;
-    border: 2px solid white;
-    background-color: rgba(0, 0, 0, 0.5);
-    pointer-events: none;
-    z-index: 36;
+	position: absolute;
+	bottom: 10px; /* Mova para o canto inferior esquerdo */
+	left: 10px;
+	width: 100px;
+	height: 150px;
+	border: 2px solid white;
+	background-color: rgba(0, 0, 0, 0.5);
+	pointer-events: none;
+	z-index: 36;
 }
 
 #hudMinimap {
-    width: 100%;
-    height: 100%;
-    display: block;
+	width: 100%;
+	height: 100%;
+	display: block;
 }
