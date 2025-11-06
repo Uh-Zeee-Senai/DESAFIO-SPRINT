@@ -1,157 +1,129 @@
-// === CONFIG (edite só aqui) ===
+// === CONFIG (mude apenas aqui se quiser trocar imagens/valores) ===
 const CONFIG = {
-	PLAYER_IMG: "ngtr.png",        // sprite top-down do player
-	RIVAL_IMG: "bot.png",          // sprite top-down do rival
-	ROAD_IMG: "road.png",          // textura/estrada (opcional)
-	BG_LEFT: "bg_left.png",        // lateral esquerda (parallax), opcional
-	BG_RIGHT: "bg_right.png",      // lateral direita (parallax), opcional
+	PLAYER_IMG: "carro1.png",            // seu carro (player)
+	RIVAL_IMAGES: ["carro2.png","carro3.png","carro2.png"], // rivais possíveis
+	TRACK_BG: "pista.jpg",               // opcional
+	CANVAS_BG_COLOR: "#071427",
 
-	MAX_SPEED: 14,    // velocidade máxima (unidade interna)
-	ACCEL: 0.35,      // aceleração
-	BRAKE: 0.9,       // freio
-	FREEZE_FRICTION: 0.05,
-	TURN_SPEED: 3.8,  // rotação lateral
-	PROGRESS_SCALE: 0.6, // quanto o speed avança a pista por frame
-
-	LAPS_TO_FINISH: 2
+	PLAYER_SIDE_SPEED: 6,    // px por frame lateral
+	SCROLL_BASE: 3.5,        // velocidade base de "descida" da pista (px/frame)
+	SCROLL_ACCEL: 2.8,       // quanto aumenta ao apertar ↑
+	SCROLL_DECEL: 3.5,       // quanto diminui ao apertar ↓
+	MAX_SCROLL: 18,          // cap na velocidade de scroll
+	SPAWN_INTERVAL: 900,     // ms base entre rivais spawn
+	SPAWN_VARIANCE: 800,     // ms random extra
+	MAX_DISTANCE: 999999     // máxima contagem da distância
 };
 
 // === Globals ===
 let canvas, ctx, W, H;
-let menuDiv, gameDiv, startBtn, resetBtn, nameInput, debugDiv;
-let hudPlayerName, hudPos, hudSpeed, hudLap;
-let player, rival;
-let keys = {}, gameRunning = false;
+let menu, startBtn, restartBtn, playerNameInput, debugDiv;
+let hudName, hudDistance, hudSpeed, hudPos, hudLaps;
+
+let keys = {};
+let gameRunning = false;
 let lastTime = 0;
-let trackOffset = 0; // deslocamento vertical da estrada (simula movimento)
-let startTime = 0, bestTimeMs = parseInt(localStorage.getItem("bestTimeMs") || "0",10) || 0;
-let TOTAL_TRACK = 100000; // units; we keep simple looped track
-let playerProgress = 0, rivalProgress = 0;
-let images = {};
+let scrollSpeed = CONFIG.SCROLL_BASE; // how fast the road moves down
 
-// === Preload images (safe) ===
-function loadImg(src) {
-	const img = new Image();
-	if (!src) return img;
-	img.src = src;
-	img.onerror = () => console.warn("Image not found:", src);
-	return img;
+let player = null;
+let rivals = [];
+let spawnTimer = 0;
+let distance = 0; // virtual units (we'll display as meters)
+let playerName = "Piloto";
+
+// Images
+const IMAGES = {
+	player: new Image(),
+	rivals: [],
+	track: new Image()
+};
+
+// preload
+IMAGES.player.src = CONFIG.PLAYER_IMG;
+for (let i = 0; i < CONFIG.RIVAL_IMAGES.length; i++) {
+	const im = new Image();
+	im.src = CONFIG.RIVAL_IMAGES[i];
+	IMAGES.rivals.push(im);
 }
+IMAGES.track.src = CONFIG.TRACK_BG;
 
-// create default simple sprites (if images missing) - generate canvas images
-function makePlaceholderCar(color = "#ff3b3b") {
-	const c = document.createElement("canvas");
-	c.width = 120; c.height = 60;
-	const g = c.getContext("2d");
-	g.fillStyle = color;
-	g.fillRect(6,12,108,36);
-	g.fillStyle = "#222";
-	g.fillRect(12,16,28,28);
-	g.fillRect(80,16,28,28);
-	g.fillStyle = "#fff";
-	g.fillRect(22,22,8,8);
-	g.fillRect(88,22,8,8);
-	return c;
-}
-
-// safe init (wait for DOM)
+// === DOM READY ===
 window.addEventListener("DOMContentLoaded", () => {
-	// DOM refs
 	canvas = document.getElementById("gameCanvas");
 	ctx = canvas.getContext("2d");
-	menuDiv = document.getElementById("menu");
-	gameDiv = document.getElementById("game");
+
+	menu = document.getElementById("menu");
 	startBtn = document.getElementById("startBtn");
-	resetBtn = document.getElementById("resetBtn");
-	nameInput = document.getElementById("playerName");
+	restartBtn = document.getElementById("restartBtn");
+	playerNameInput = document.getElementById("playerName");
 	debugDiv = document.getElementById("debug");
 
-	hudPlayerName = document.getElementById("playerNameHud");
-	hudPos = document.getElementById("posHud");
-	hudSpeed = document.getElementById("speedHud");
-	hudLap = document.getElementById("lapHud");
+	hudName = document.getElementById("hud-name");
+	hudDistance = document.getElementById("hud-distance");
+	hudSpeed = document.getElementById("hud-speed");
+	hudPos = document.getElementById("hud-pos");
+	hudLaps = document.getElementById("hud-laps");
 
-	// load images
-	images.player = loadImg(CONFIG.PLAYER_IMG);
-	images.rival = loadImg(CONFIG.RIVAL_IMG);
-	images.road = loadImg(CONFIG.ROAD_IMG);
-	images.bgLeft = loadImg(CONFIG.BG_LEFT);
-	images.bgRight = loadImg(CONFIG.BG_RIGHT);
-
-	// if images fail to load, use placeholder
-	images.player.onerror = images.rival.onerror = images.road.onerror = () => {};
-	images.player.onload = images.rival.onload = images.road.onload = () => {};
-
-	// fallback placeholders if not loaded after short time
-	setTimeout(() => {
-		if (!images.player || !images.player.complete || !images.player.naturalWidth) images.player = makePlaceholderCar("#ff3b3b");
-		if (!images.rival || !images.rival.complete || !images.rival.naturalWidth) images.rival = makePlaceholderCar("#4a90e2");
-	}, 300);
-
-	// events
 	startBtn.addEventListener("click", startGame);
-	resetBtn.addEventListener("click", () => { localStorage.removeItem("lastPlayer"); nameInput.value = ""; });
+	restartBtn.addEventListener("click", restartGame);
 
+	window.addEventListener("resize", resize);
 	window.addEventListener("keydown", e => { keys[e.key] = true; });
 	window.addEventListener("keyup", e => { keys[e.key] = false; });
 
-	onResize();
-	window.addEventListener("resize", onResize);
-
-	// restore name
-	const saved = localStorage.getItem("lastPlayer");
-	if (saved) nameInput.value = saved;
+	resize();
+	drawMenuPreview();
 });
 
-// === Start / Init ===
+// === Setup / Start / Restart ===
 function startGame() {
-	const name = (nameInput.value || "Piloto").trim();
-	localStorage.setItem("lastPlayer", name);
-
-	// init player and rival
-	player = {
-		name,
-		x: 0, y: 0,
-		angle: 0,
-		speed: 0,
-		width: 64, height: 32,
-		sprite: images.player
-	};
-	rival = {
-		name: "Rival",
-		x: 0, y: 0,
-		angle: 0,
-		speed: CONFIG.MAX_SPEED * 0.85,
-		width: 64, height: 32,
-		sprite: images.rival,
-		aiAggro: 0.5
-	};
-
-	// reset state
-	playerProgress = 0;
-	rivalProgress = 0;
-	trackOffset = 0;
-	startTime = performance.now();
-	lastTime = performance.now();
+	playerName = (playerNameInput && playerNameInput.value.trim()) ? playerNameInput.value.trim() : "Piloto";
+	hudName.textContent = playerName;
+	menu.style.display = "none";
+	restartBtn.style.display = "none";
+	initRun();
 	gameRunning = true;
-	menuDiv.style.display = "none";
-	gameDiv.style.display = "block";
-	hudPlayerName.textContent = player.name;
-	hudLap.textContent = `Volta: 0/${CONFIG.LAPS_TO_FINISH}`;
-
+	lastTime = performance.now();
 	requestAnimationFrame(loop);
 }
+function restartGame() {
+	// clear state and show menu again quickly then start
+	resetState();
+	menu.style.display = "flex";
+	restartBtn.style.display = "none";
+}
+function resetState() {
+	gameRunning = false;
+	player = null;
+	rivals = [];
+	distance = 0;
+	scrollSpeed = CONFIG.SCROLL_BASE;
+	spawnTimer = 0;
+}
 
-// === Resize ===
-function onResize() {
-	W = canvas.width = window.innerWidth;
-	H = canvas.height = window.innerHeight;
+// initialize player & first state
+function initRun() {
+	resize();
+	player = {
+		img: IMAGES.player,
+		width: Math.min(140, Math.floor(W * 0.12)),
+		height: Math.min(200, Math.floor(H * 0.18)),
+		x: Math.floor(W/2 - Math.min(140, Math.floor(W * 0.12))/2),
+		y: Math.floor(H - Math.min(200, Math.floor(H * 0.18)) - 24),
+		speedSide: CONFIG.PLAYER_SIDE_SPEED,
+		crashed: false
+	};
+	rivals = [];
+	spawnTimer = performance.now() + randInterval();
+	distance = 0;
+	scrollSpeed = CONFIG.SCROLL_BASE;
+	hudName.textContent = playerName;
 }
 
 // === Main loop ===
 function loop(ts) {
 	if (!gameRunning) return;
-	const dt = Math.min(40, ts - lastTime) / 16.6667; // dt normalized ~1 per frame
+	const dt = Math.min(50, ts - lastTime) / 16.6667; // normalized
 	lastTime = ts;
 
 	update(dt);
@@ -160,190 +132,218 @@ function loop(ts) {
 	requestAnimationFrame(loop);
 }
 
-// === Update game logic ===
+// === Update game state ===
 function update(dt) {
-	// player input
-	if (keys["ArrowUp"] || keys["w"]) {
-		player.speed += CONFIG.ACCEL * dt;
-	} else {
-		player.speed -= CONFIG.FREEZE_FRICTION * dt;
+	// Controls: ←/→ side, ↑ accelerate (increase scroll), ↓ decelerate (reduce/reverse)
+	if (player && !player.crashed) {
+		if (keys["ArrowLeft"] || keys["a"]) player.x -= Math.round(player.speedSide * dt);
+		if (keys["ArrowRight"] || keys["d"]) player.x += Math.round(player.speedSide * dt);
+
+		// clamp inside road-like area (we'll allow edge-to-edge)
+		player.x = clamp(player.x, 8, W - player.width - 8);
+
+		// accelerate / decelerate affects scrollSpeed
+		if (keys["ArrowUp"] || keys["w"]) {
+			scrollSpeed += CONFIG.SCROLL_ACCEL * dt;
+		} else {
+			// natural decay slightly toward base
+			if (scrollSpeed > CONFIG.SCROLL_BASE) scrollSpeed -= CONFIG.SCROLL_BASE * 0.02 * dt;
+			else if (scrollSpeed < CONFIG.SCROLL_BASE) scrollSpeed += CONFIG.SCROLL_BASE * 0.02 * dt;
+		}
+		if (keys["ArrowDown"] || keys["s"]) {
+			scrollSpeed -= CONFIG.SCROLL_DECEL * dt;
+		}
+
+		// clamp scroll speed
+		scrollSpeed = clamp(scrollSpeed, -CONFIG.MAX_SCROLL, CONFIG.MAX_SCROLL);
 	}
-	if (keys["ArrowDown"] || keys["s"]) player.speed -= CONFIG.BRAKE * dt;
 
-	player.speed = clamp(player.speed, 0, CONFIG.MAX_SPEED);
+	// update distance (simulate meters). Use positive scrollSpeed to increase distance.
+	if (scrollSpeed > 0) {
+		distance += Math.round(scrollSpeed * dt);
+		if (distance > CONFIG.MAX_DISTANCE) distance = CONFIG.MAX_DISTANCE;
+	} else if (scrollSpeed < 0) {
+		// when negative, "go backward" a bit (but not below 0)
+		distance = Math.max(0, distance + Math.round(scrollSpeed * dt));
+	}
+	// spawn rivals
+	const now = performance.now();
+	if (now >= spawnTimer) {
+		spawnRival();
+		spawnTimer = now + randInterval();
+	}
 
-	// steering modifies lateral movement visually (angle)
-	let steer = 0;
-	if (keys["ArrowLeft"] || keys["a"]) steer = -1;
-	if (keys["ArrowRight"] || keys["d"]) steer = 1;
-	player.angle = steer * 0.12 * (player.speed / CONFIG.MAX_SPEED);
+	// update rivals positions (they move downwards at rate proportional to scrollSpeed + own speed)
+	for (let i = rivals.length - 1; i >= 0; i--) {
+		const r = rivals[i];
+		// vertical speed = scrollSpeed * base + r.speed
+		const baseDown = (scrollSpeed >= 0) ? scrollSpeed : scrollSpeed * 0.6;
+		r.y += (baseDown + r.speed) * dt;
+		// slight horizontal sway
+		r.x += Math.sin((now + r.offset) / 600) * r.sway * dt;
 
-	// simulate progress along track (vertical movement)
-	const progInc = player.speed * CONFIG.PROGRESS_SCALE * dt;
-	playerProgress += progInc;
-	rivalProgress += rival.speed * CONFIG.PROGRESS_SCALE * dt;
+		// recycle if off bottom
+		if (r.y > H + 120) {
+			rivals.splice(i,1);
+			continue;
+		}
 
-	// loop track
-	if (playerProgress >= TOTAL_TRACK) playerProgress -= TOTAL_TRACK;
-	if (rivalProgress >= TOTAL_TRACK) rivalProgress -= TOTAL_TRACK;
-
-	// update track scroll offset (visual)
-	trackOffset += player.speed * 0.6 * dt;
-	if (trackOffset > H) trackOffset -= H;
-
-	// simple rival AI: tries to match player's progress plus small randomness
-	const diff = (playerProgress - rivalProgress);
-	let rivalTarget = CONFIG.MAX_SPEED * (0.8 + rival.aiAggro * 0.25) + diff * 0.0001;
-	// clamp
-	rivalTarget = clamp(rivalTarget, 1, CONFIG.MAX_SPEED * 1.05);
-	// smooth speed change
-	rival.speed += (rivalTarget - rival.speed) * 0.02 * dt;
-	// small lateral wobble for visuals
-	rival.angle = Math.sin(performance.now()/800) * 0.08;
+		// collision check with player
+		if (player && !player.crashed && rectOverlap(player, r)) {
+			player.crashed = true;
+			gameOver();
+			return;
+		}
+	}
 
 	// update HUD
-	const speedKmh = Math.round(player.speed * 12); // tuning
-	hudSpeed.textContent = `Velocidade: ${speedKmh} km/h`;
-	hudPos.textContent = (playerProgress >= rivalProgress) ? "Posição: 1/2" : "Posição: 2/2";
-
-	// laps: count when player completes full track
-	const lapsDone = Math.floor((playerProgress) / TOTAL_TRACK);
-	hudLap.textContent = `Volta: ${lapsDone % CONFIG.LAPS_TO_FINISH}/${CONFIG.LAPS_TO_FINISH}`;
-	// finish condition (player completes LAPS_TO_FINISH loops)
-	if (Math.floor((playerProgress) / TOTAL_TRACK) >= CONFIG.LAPS_TO_FINISH) {
-		endRace();
-	}
+	updateHUD();
 }
 
-// === Render (top-down aerial) ===
+// === Spawn rival ===
+function spawnRival() {
+	// choose image
+	const idx = Math.floor(Math.random() * IMAGES.rivals.length);
+	const img = IMAGES.rivals[idx];
+	const w = Math.min(120, Math.floor(W * (0.10 + Math.random()*0.02)));
+	const h = Math.min(170, Math.floor(H * (0.14 + Math.random()*0.03)));
+	const laneX = Math.floor(16 + Math.random() * (W - 32 - w));
+	const r = {
+		img,
+		width: w,
+		height: h,
+		x: laneX,
+		y: -h - 20,
+		speed: 2 + Math.random() * 3.2, // own downward speed
+		sway: 8 + Math.random() * 12,
+		offset: Math.random() * 1000
+	};
+	rivals.push(r);
+}
+
+// === Render frame ===
 function render() {
 	// clear
 	ctx.clearRect(0,0,W,H);
 
-	// background sides (parallax)
-	drawBackground();
-
-	// draw repeated road stripes (vertical scrolling)
-	drawRoad();
-
-	// compute screen positions: player always near bottom center; rival relative offset above
-	const centerX = W/2;
-	const playerY = H * 0.78;
-	const rivalY = playerY - ((playerProgress - rivalProgress) * 0.0006 * H); // visual relative distance
-	// cap rivalY within screen
-	const rivalYc = clamp(rivalY, H*0.12, H*0.7);
-
-	// draw rival behind (farther)
-	drawCar(rival, centerX, rivalYc);
-
-	// draw player on top center
-	drawCar(player, centerX, playerY, true);
-
-	// optional HUD overlays (already DOM)
-}
-
-// draw background (simple parallax left/right, and horizon)
-function drawBackground() {
-	// sky gradient
-	const g = ctx.createLinearGradient(0,0,0,H*0.6);
-	g.addColorStop(0, "#87CEEB");
-	g.addColorStop(1, "#cfefff");
-	ctx.fillStyle = g;
-	ctx.fillRect(0,0,W,H*0.6);
-
-	// ground sides
-	ctx.fillStyle = "#2ecc71";
-	ctx.fillRect(0,H*0.6,W,H*0.4);
-
-	// draw left/right decorative if images exist
-	if (images.bgLeft && images.bgLeft.complete && images.bgLeft.naturalWidth) {
-		const scale = (H/ images.bgLeft.height) * 0.6;
-		const w = images.bgLeft.width * scale;
-		ctx.drawImage(images.bgLeft, 20, H*0.58 - (trackOffset%100), w, images.bgLeft.height*scale);
-	}
-	if (images.bgRight && images.bgRight.complete && images.bgRight.naturalWidth) {
-		const scale = (H/ images.bgRight.height) * 0.6;
-		const w = images.bgRight.width * scale;
-		ctx.drawImage(images.bgRight, W - w - 20, H*0.58 - (trackOffset%100), w, images.bgRight.height*scale);
-	}
-}
-
-// draw road with center dashed line and lane markers
-function drawRoad() {
-	const roadW = Math.min(W*0.5, 900);
-	const x = (W - roadW)/2;
-	const laneW = roadW/3;
-
-	// road base
-	ctx.fillStyle = "#3a3a3a";
-	ctx.fillRect(x, 0, roadW, H);
-
-	// side markers
-	ctx.fillStyle = "#111";
-	ctx.fillRect(x+4, 0, 6, H);
-	ctx.fillRect(x+roadW-10, 0, 6, H);
-
-	// dashed center line (scrolling)
-	const dashH = 40;
-	const gap = 28;
-	const total = dashH + gap;
-	let start = - (trackOffset % total);
-	ctx.fillStyle = "#f8f3e3";
-	for (let y = start; y < H; y += total) {
-		ctx.fillRect(W/2 - 6/2, y, 6, dashH);
-	}
-
-	// lane boundaries (subtle)
-	ctx.strokeStyle = "rgba(255,255,255,0.06)";
-	ctx.lineWidth = 2;
-	ctx.beginPath();
-	ctx.moveTo(x + laneW, 0);
-	ctx.lineTo(x + laneW, H);
-	ctx.moveTo(x + 2*laneW, 0);
-	ctx.lineTo(x + 2*laneW, H);
-	ctx.stroke();
-}
-
-// draw car (rotated), flip for top-down look if needed
-function drawCar(car, sx, sy, isPlayer = false) {
-	ctx.save();
-	ctx.translate(sx, sy);
-	ctx.rotate(car.angle || 0);
-	// scale a bit by speed (visual feedback)
-	const scale = 1 + (car.speed / CONFIG.MAX_SPEED) * 0.06;
-	ctx.scale(scale, scale);
-
-	if (car.sprite && car.sprite.complete && car.sprite.naturalWidth) {
-		ctx.drawImage(car.sprite, -car.width/2, -car.height/2, car.width, car.height);
-	} else if (car.sprite && car.sprite.getContext) {
-		// canvas placeholder
-		ctx.drawImage(car.sprite, -car.width/2, -car.height/2, car.width, car.height);
+	// background track (tiled or stretched)
+	if (IMAGES.track && IMAGES.track.complete && IMAGES.track.naturalWidth) {
+		// draw with slight vertical offset to imply movement (use distance % img.height)
+		const img = IMAGES.track;
+		const t = Math.floor((distance) % img.height);
+		// draw two tiles to fill
+		ctx.drawImage(img, 0, -t, W, img.height);
+		ctx.drawImage(img, 0, img.height - t, W, img.height);
 	} else {
-		// fallback simple rectangle
-		ctx.fillStyle = isPlayer ? "#ff3b3b" : "#4a90e2";
-		ctx.fillRect(-car.width/2, -car.height/2, car.width, car.height);
+		// simple gradient already on canvas via CSS background, but paint fallback
+		ctx.fillStyle = CONFIG.CANVAS_BG_COLOR;
+		ctx.fillRect(0,0,W,H);
 	}
-	// small shadow
-	ctx.fillStyle = "rgba(0,0,0,0.12)";
-	ctx.beginPath();
-	ctx.ellipse(6, car.height/2 + 8, car.width*0.5, 6, 0, 0, Math.PI*2);
-	ctx.fill();
 
-	ctx.restore();
+	// draw road overlay (centered rectangle) to simulate "pista"
+	const roadW = Math.floor(W * 0.68);
+	const roadX = Math.floor((W - roadW)/2);
+	const roadY = 0;
+	ctx.fillStyle = "#202830";
+	ctx.fillRect(roadX, roadY, roadW, H);
+
+	// lane markings (center dashed)
+	const laneXCenter = Math.floor(W/2);
+	ctx.strokeStyle = "#f2f2f2";
+	ctx.lineWidth = 4;
+	ctx.setLineDash([10,20]);
+	for (let y = - (distance % 40); y < H; y+=40) {
+		ctx.beginPath();
+		ctx.moveTo(laneXCenter, y);
+		ctx.lineTo(laneXCenter, y+16);
+		ctx.stroke();
+	}
+	ctx.setLineDash([]);
+
+	// draw rivals (behind player for depth)
+	for (const r of rivals) {
+		if (r.img && r.img.complete && r.img.naturalWidth) {
+			ctx.drawImage(r.img, r.x, Math.floor(r.y), r.width, r.height);
+		} else {
+			// fallback rectangle
+			ctx.fillStyle = "#b33";
+			ctx.fillRect(r.x, Math.floor(r.y), r.width, r.height);
+		}
+		// small name label
+		ctx.fillStyle = "#fff";
+		ctx.font = "12px monospace";
+		ctx.fillText("RIVAL", r.x + 6, Math.floor(r.y) + 14);
+	}
+
+	// draw player (on top)
+	if (player) {
+		if (player.img && player.img.complete && player.img.naturalWidth) {
+			ctx.drawImage(player.img, player.x, player.y, player.width, player.height);
+		} else {
+			ctx.fillStyle = "#ff3b3b";
+			ctx.fillRect(player.x, player.y, player.width, player.height);
+		}
+		// label
+		ctx.fillStyle = "#fff";
+		ctx.font = "12px monospace";
+		ctx.fillText(playerName, player.x + 6, player.y + 14);
+	}
+
+	// optional debug - draw collision boxes when debug flag enabled
+	// (not enabled by default)
 }
 
-// === End race / reset ===
-function endRace() {
+// === HUD update ===
+function updateHUD() {
+	// distance display: meters approx (distance units are px*some factor). We'll show simple integer up to MAX_DISTANCE
+	hudDistance.textContent = "DIST: " + String(Math.min(CONFIG.MAX_DISTANCE, distance)).padStart(6, "0");
+	hudSpeed.textContent = "SPEED: " + Math.round(scrollSpeed);
+	// position is always 1 or 2 depending if player total progressed greater than first rival's progress approximation
+	const leading = (rivals.length === 0) ? 1 : ((distance >= Math.max(...rivals.map(r => Math.max(0, r._progress || 0)))) ? 1 : 2);
+	hudPos.textContent = "POS: " + leading + "/2";
+	// laps placeholder
+	hudLaps.textContent = "LAPS: -";
+}
+
+// === Game Over ===
+function gameOver() {
 	gameRunning = false;
-	const elapsed = performance.now() - startTime;
-	if (!bestTimeMs || elapsed < bestTimeMs || bestTimeMs === 0) {
-		bestTimeMs = Math.floor(elapsed);
-		localStorage.setItem("bestTimeMs", bestTimeMs.toString());
-	}
-	alert(`${player.name} finalizou a corrida!`);
-	menuDiv.style.display = "flex";
-	gameDiv.style.display = "none";
+	restartBtn.style.display = "inline-block";
+	menu.style.display = "flex";
+	// show crash message
+	debugDiv.textContent = playerName + " colisão! Distância final: " + distance;
 }
 
-// helpers
-function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+// === Utils ===
+function randInterval() {
+	return CONFIG.SPAWN_INTERVAL + Math.random() * CONFIG.SPAWN_VARIANCE;
+}
+function clamp(v,a,b) { return Math.max(a, Math.min(b, v)); }
+function rectOverlap(a,b) {
+	return !(a.x + a.width < b.x || a.x > b.x + b.width || a.y + a.height < b.y || a.y > b.y + b.height);
+}
+function resize() {
+	W = window.innerWidth;
+	H = window.innerHeight;
+	if (canvas) {
+		canvas.width = W;
+		canvas.height = H;
+	}
+	// keep player centered horizontally if exists
+	if (player) {
+		player.width = Math.min(140, Math.floor(W * 0.12));
+		player.height = Math.min(200, Math.floor(H * 0.18));
+		player.x = Math.floor(W/2 - player.width/2);
+		player.y = Math.floor(H - player.height - 24);
+	}
+}
+
+// small helper to draw initial menu preview
+function drawMenuPreview() {
+	ctx.clearRect(0,0,canvas.width,canvas.height);
+	ctx.fillStyle = "rgba(0,0,0,0.45)";
+	ctx.fillRect(0,0,canvas.width,canvas.height);
+	ctx.fillStyle = "#fff";
+	ctx.font = "18px monospace";
+	ctx.fillText("Pressione Iniciar para começar a corrida (Desktop - Vista Aérea)", 24, 48);
+}

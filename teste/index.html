@@ -2,43 +2,36 @@
 <html lang="pt-BR">
 <head>
 	<meta charset="utf-8" />
-	<meta name="viewport" content="width=device-width,initial-scale=1" />
-	<title>Next-Gen Turbo Racing — Desktop (Top-down)</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>Corrida Aérea — Next-Gen Desktop</title>
 	<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
-	<link rel="stylesheet" href="style.css" />
+	<link rel="stylesheet" href="style.css">
 </head>
 <body>
-	<!-- MENU -->
-	<div id="menu" class="menu">
-		<h1>Next-Gen Turbo Racing</h1>
-		<input id="playerName" type="text" placeholder="Seu nome (salvo localmente)" />
+	<div id="menu">
+		<h1>Next-Gen Turbo Racing (Desktop)</h1>
+		<input id="playerName" placeholder="Digite seu nome de piloto" />
 		<div class="menu-row">
-			<button id="startBtn">Iniciar Corrida</button>
-			<button id="resetBtn">Limpar Nome</button>
+			<button id="startBtn">Iniciar</button>
+			<button id="restartBtn" style="display:none">Jogar Novamente</button>
 		</div>
-		<small class="hint">Use ↑ ↓ ← → ou W S A D — visão aérea (top-down)</small>
+		<p class="hint">← → mover | ↑ acelerar (pista desce) | ↓ reduzir (pista desacelera)</p>
+		<div id="debug"></div>
 	</div>
 
-	<!-- GAME -->
-	<div id="game" class="game" style="display:none;">
-		<canvas id="gameCanvas"></canvas>
+	<canvas id="gameCanvas"></canvas>
 
-		<div id="hud" class="hud">
-			<div id="hudLeft">
-				<div id="playerNameHud">Piloto</div>
-				<div id="posHud">Posição: 1/2</div>
-			</div>
-			<div id="hudRight">
-				<div id="speedHud">Velocidade: 0 km/h</div>
-				<div id="lapHud">Volta: 0/2</div>
-			</div>
+	<div id="hud">
+		<div id="hud-left">
+			<div id="hud-pos">POS: 1/2</div>
+			<div id="hud-laps">LAPS: -</div>
 		</div>
-
-		<!-- controls (desktop) -->
-		<div id="controlsVisual" class="controlsVisual">
-			<div>↑ Acelerar</div>
-			<div>↓ Frear</div>
-			<div>← → Virar</div>
+		<div id="hud-center">
+			<div id="hud-distance">DIST: 0</div>
+			<div id="hud-speed">SPEED: 0</div>
+		</div>
+		<div id="hud-right">
+			<div id="hud-name">Piloto</div>
 		</div>
 	</div>
 
