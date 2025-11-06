@@ -1,43 +1,42 @@
-// === CONFIGURAÇÕES (mude só aqui) ===
+// === CONFIGURAÇÕES (troque apenas aqui se quiser) ===
 const CONFIG = {
-	PLAYER_IMG: "ngtr.png",   // seu player sprite (troque se quiser)
-	BOT_IMG: "bot.png",       // sprite do rival
-	TRACK_BG: "pista.jpg",    // textura de pista (opcional)
+	PLAYER_IMG: "ngtr.png",
+	BOT_IMG: "bot.png",
+	TRACK_BG: "track.jpg",
 
-	MAX_SPEED: 14,            // velocidade máxima "base"
-	ACCEL: 0.35,              // aceleração
-	BRAKE: 0.9,
+	MAX_SPEED: 18,    // unidade interna
+	ACCEL: 0.36,
+	BRAKE: 1.2,
 	FRICTION: 0.04,
-	TURN_SPEED: 4.0,
+	TURN_SPEED: 5.2,
 
-	TRACK_LENGTH_UNITS: 6000, // comprimento total da volta (unidades simples)
-	LAPS_TO_FINISH: 2,
-
-	SPAWN_EASTER_MIN: 9000,
-	SPAWN_EASTER_MAX: 20000,
-	AI_VARIANCE: 0.35
+	SECTORS: [
+		{ name: "Alpha Track", length: 30000 },
+		{ name: "Bravo Track", length: 30000 }
+	],
+	LAPS_TO_FINISH: 2
 };
 
-// progress scale para controlar sensação de tempo vs distância
-const PROGRESS_SCALE = 0.9;
+// progress scale (affects how fast you cross long sectors)
+const PROGRESS_SCALE = 0.65;
 
-// === GLOBAIS ===
+// === variáveis globais ===
 let canvas, ctx, W, H;
-let menuDiv, gameDiv, startBtn, resetDataBtn, nameInput, debugDiv;
-let hudSpeedVal, posDisplay, lapDisplay, hudTime, hudBestTime;
+let menuDiv, gameDiv, startBtn, resetBtn, nameInput, debugDiv;
+let hudSpeedVal, posDisplay, lapDisplay, hudTime;
 let hudMinimapCanvas, hudMinimapCtx;
 
 let player, bot;
-let totalTrack = CONFIG.TRACK_LENGTH_UNITS;
+let TOTAL_TRACK_LENGTH = CONFIG.SECTORS.reduce((a,s)=>a+(s.length||0), 0);
+let currentSectorIndex = 0;
+let sectorProgress = 0;
 let gameRunning = false;
 let keys = {};
-let lastFrameTime = 0;
+let lastFrame = 0;
 let startTime = 0;
-let easter = null;
-let easterTimer = null;
-let bestTimeMs = parseInt(localStorage.getItem("bestTimeMs") || "0", 10) || 0;
+let bestTimeMs = parseInt(localStorage.getItem("bestTimeMs")||"0",10) || 0;
 
-// images (preload)
+// preload images (fallbacks allowed)
 const IMG = {
 	player: loadIfExists(CONFIG.PLAYER_IMG),
 	bot: loadIfExists(CONFIG.BOT_IMG),
@@ -45,49 +44,45 @@ const IMG = {
 };
 
 function loadIfExists(src) {
-	const i = new Image();
-	if (!src) return i;
-	i.src = src;
-	i.onload = () => console.log("Loaded:", src);
-	i.onerror = () => console.warn("Image missing:", src);
-	return i;
+	const im = new Image();
+	if (!src) return im;
+	im.src = src;
+	im.onload = ()=> console.log("Loaded:", src);
+	im.onerror = ()=> console.warn("Missing:", src);
+	return im;
 }
 
-// safe setup on DOM ready
+// === setup seguro ===
 function safeStartSetup() {
 	window.addEventListener("DOMContentLoaded", async () => {
-		// DOM refs
 		canvas = document.getElementById("gameCanvas");
 		ctx = canvas ? canvas.getContext("2d") : null;
 		menuDiv = document.getElementById("menu");
 		gameDiv = document.getElementById("game");
 		startBtn = document.getElementById("startGameBtn");
-		resetDataBtn = document.getElementById("resetDataBtn");
+		resetBtn = document.getElementById("resetDataBtn");
 		nameInput = document.getElementById("playerName");
 		debugDiv = document.getElementById("debug");
-
 		hudSpeedVal = document.getElementById("hudSpeedVal");
 		posDisplay = document.getElementById("pos-display");
 		lapDisplay = document.getElementById("lap-display");
-		hudTime = document.getElementById("hudTime");
-		hudBestTime = document.getElementById("hudBestTime");
-
+		hudTime = document.getElementById("hud-time");
 		hudMinimapCanvas = document.getElementById("hudMinimap");
 		hudMinimapCtx = hudMinimapCanvas ? hudMinimapCanvas.getContext("2d") : null;
 
 		if (!canvas || !ctx) {
-			console.error("Canvas não encontrado.");
+			console.error("Canvas não encontrado (id=gameCanvas).");
 			if (debugDiv) debugDiv.textContent = "Erro: canvas não encontrado.";
 			return;
 		}
 
-		// restore name if present
+		// restore name
 		const last = localStorage.getItem("lastPlayer");
 		if (last) nameInput.value = last;
 
 		// events
-		startBtn && startBtn.addEventListener("click", onStartSafe);
-		resetDataBtn && resetDataBtn.addEventListener("click", () => {
+		startBtn && startBtn.addEventListener("click", onStart);
+		resetBtn && resetBtn.addEventListener("click", ()=>{
 			localStorage.removeItem("lastPlayer");
 			if (nameInput) nameInput.value = "";
 			debug("Nome salvo limpo.");
@@ -98,90 +93,77 @@ function safeStartSetup() {
 
 		onResize();
 		await waitForImages([IMG.player, IMG.bot, IMG.track], 1200);
-		drawMenuFrame();
+		drawMenuPreview();
 	});
 }
-
-function waitForImages(imgs, timeout = 1200) {
-	return new Promise(resolve => {
-		let rem = imgs.length;
-		if (rem === 0) return resolve();
-		let done = false;
-		const one = () => {
-			rem--;
-			if (rem <= 0 && !done) { done = true; resolve(); }
-		};
-		for (const im of imgs) {
-			if (!im) { one(); continue; }
-			if (im.complete && im.naturalWidth) { one(); continue; }
+function waitForImages(arr, timeout=1200) {
+	return new Promise(resolve=>{
+		let rem = arr.length;
+		if (rem===0) return resolve();
+		let done=false;
+		const one = ()=>{ rem--; if(rem<=0 && !done){ done=true; resolve(); } };
+		for(const im of arr) {
+			if(!im) { one(); continue; }
+			if(im.complete && im.naturalWidth) { one(); continue; }
 			im.onload = one; im.onerror = one;
 		}
-		setTimeout(() => { if (!done) { done = true; resolve(); } }, timeout);
+		setTimeout(()=>{ if(!done){ done=true; resolve(); } }, timeout);
 	});
 }
 
-// onStart wrapper
-function onStartSafe() {
+// === start / init ===
+function onStart() {
 	try {
 		const name = (nameInput && nameInput.value) ? nameInput.value.trim() : "Piloto";
 		localStorage.setItem("lastPlayer", name);
 		initRace(name);
 		menuDiv.style.display = "none";
-		gameDiv.style.display = "block";
+		document.getElementById("game").style.display = "block";
 		gameRunning = true;
 		startTime = performance.now();
-		lastFrameTime = performance.now();
-		requestAnimationFrame(gameLoop);
-	} catch (err) {
-		console.error("Erro start:", err);
-		debug("Erro start: " + err.message);
+		lastFrame = performance.now();
+		requestAnimationFrame(loop);
+	} catch(e) {
+		console.error("Erro onStart:", e);
+		debug("Erro onStart: " + e.message);
 	}
 }
-
-// init race minimal
-function initRace(playerName) {
+function initRace(name) {
 	onResize();
 	player = {
-		name: playerName,
-		img: IMG.player,
-		x: W / 2 - 80,
-		y: H - 220,
-		width: 120, height: 140,
-		speed: 0,
-		angle: 0,
-		totalProgress: 0,
-		lapsCompleted: 0
+		name,
+		x: W*0.5 - 60,
+		y: H - 200,
+		width: 120, height: 160,
+		speed: 0, angle: 0, boosting: false,
+		totalProgress: 0, laps: 0
 	};
 	bot = {
 		name: "Rival",
-		img: IMG.bot,
-		x: W / 2 + 40,
+		x: W*0.5 + 80,
 		y: H - 260,
-		width: 120, height: 140,
-		speed: CONFIG.MAX_SPEED * 0.9,
-		totalProgress: 0,
-		lapsCompleted: 0,
-		aiOff: Math.random() * 1000
+		width: 120, height: 160,
+		speed: CONFIG.MAX_SPEED*0.9, aiPhase: 0,
+		totalProgress: 0, laps: 0
 	};
-	totalTrack = CONFIG.TRACK_LENGTH_UNITS;
-	easter = null;
-	clearTimeout(easterTimer);
+	currentSectorIndex = 0;
+	sectorProgress = 0;
+	TOTAL_TRACK_LENGTH = CONFIG.SECTORS.reduce((a,s)=>a+(s.length||0),0);
+	debug("Corrida iniciada. track=" + TOTAL_TRACK_LENGTH);
 	updateHUD();
 }
 
-// main loop
-function gameLoop(ts) {
-	if (!gameRunning) return;
-	const dt = Math.min(48, ts - lastFrameTime) / 16.6667;
-	lastFrameTime = ts;
-
+// === main loop ===
+function loop(ts) {
+	if(!gameRunning) return;
+	const dt = Math.min(48, ts - lastFrame) / 16.6667;
+	lastFrame = ts;
 	update(dt);
 	render();
-
-	requestAnimationFrame(gameLoop);
+	requestAnimationFrame(loop);
 }
 
-// update physics & AI
+// === update game logic ===
 function update(dt) {
 	// player controls
 	if (keys["ArrowUp"] || keys["w"]) player.speed += CONFIG.ACCEL * dt;
@@ -189,62 +171,84 @@ function update(dt) {
 	if (keys["ArrowDown"] || keys["s"]) player.speed -= CONFIG.BRAKE * dt;
 	player.speed = clamp(player.speed, 0, CONFIG.MAX_SPEED);
 
-	let lateral = 0;
-	if (keys["ArrowLeft"] || keys["a"]) lateral = -1;
-	if (keys["ArrowRight"] || keys["d"]) lateral = 1;
-	player.x += lateral * CONFIG.TURN_SPEED * (1 + player.speed / CONFIG.MAX_SPEED) * dt;
-	player.angle = lateral * -0.12 * (player.speed / CONFIG.MAX_SPEED);
-	const margin = 0.15 * W;
+	let lat = 0;
+	if (keys["ArrowLeft"] || keys["a"]) lat = -1;
+	if (keys["ArrowRight"] || keys["d"]) lat = 1;
+	player.x += lat * CONFIG.TURN_SPEED * (1 + (player.speed / CONFIG.MAX_SPEED)) * dt;
+	player.angle = lat * -0.12 * (player.speed / CONFIG.MAX_SPEED);
+	const margin = 0.12 * W;
 	player.x = clamp(player.x, margin, W - margin - player.width);
 
-	// bot AI (simple chase + small randomness)
-	const base = CONFIG.MAX_SPEED * (1 + (Math.sin(performance.now()/1200 + bot.aiOff) * 0.05));
-	const diff = (player.totalProgress - bot.totalProgress);
-	const want = clamp(base + (diff > 0 ? 0.6 : -0.4) + (Math.random() - 0.5) * CONFIG.AI_VARIANCE, 1, CONFIG.MAX_SPEED * 1.12);
+	// bot AI simple: fluctuate, try to match progress
+	const noise = (Math.sin(performance.now()/800 + bot.aiPhase) * 0.4) + (Math.random()-0.5)*0.2;
+	const want = CONFIG.MAX_SPEED * (0.85 + noise*0.05);
 	bot.speed += (want - bot.speed) * 0.02 * dt;
-	// bot lateral line
-	const desiredX = W/2 + Math.sin(performance.now()/900 + bot.aiOff) * 60;
-	bot.x += (desiredX - bot.x) * 0.015 * dt;
+	bot.aiPhase += 0.005 * dt;
+	const desiredX = W*0.5 + Math.sin(performance.now()/1000 + bot.aiPhase)*80;
+	bot.x += (desiredX - bot.x) * 0.02 * dt;
 	bot.x = clamp(bot.x, margin, W - margin - bot.width);
 
-	// progress
+	// progress both
 	const pInc = player.speed * PROGRESS_SCALE * dt;
 	const bInc = bot.speed * PROGRESS_SCALE * dt;
 	player.totalProgress += pInc;
 	bot.totalProgress += bInc;
 
-	// compute laps & sector progress (simple: current sector = totalProgress % totalTrack)
-	const playerLaps = Math.floor(player.totalProgress / totalTrack);
-	if (playerLaps !== player.lapsCompleted) {
-		player.lapsCompleted = playerLaps;
-		if (player.lapsCompleted >= CONFIG.LAPS_TO_FINISH) { finishRace(); return; }
+	// compute sector/progress from player
+	let pRem = player.totalProgress % TOTAL_TRACK_LENGTH;
+	let acc = 0;
+	for (let i=0;i<CONFIG.SECTORS.length;i++){
+		const len = CONFIG.SECTORS[i].length;
+		if (pRem < acc + len) {
+			currentSectorIndex = i;
+			sectorProgress = pRem - acc;
+			break;
+		}
+		acc += len;
 	}
-	bot.lapsCompleted = Math.floor(bot.totalProgress / totalTrack);
 
-	// update timer/hud
+	// laps
+	const playerLap = Math.floor(player.totalProgress / TOTAL_TRACK_LENGTH);
+	if (playerLap !== player.laps) {
+		player.laps = playerLap;
+		if (player.laps >= CONFIG.LAPS_TO_FINISH) {
+			finishRace();
+			return;
+		}
+	}
+	bot.laps = Math.floor(bot.totalProgress / TOTAL_TRACK_LENGTH);
+
+	// update timer & hud
 	updateTimer();
 	updateHUD();
 }
 
-// render everything
+// === render visuals ===
 function render() {
-	// background plain
-	ctx.fillStyle = "#0b1220";
-	ctx.fillRect(0, 0, W, H);
+	// clear
+	ctx.clearRect(0,0,W,H);
 
-	// simple parallax track image at bottom if exists
+	// brighter background sky + horizon
+	const grad = ctx.createLinearGradient(0,0,0,H);
+	grad.addColorStop(0,"#bde7ff");
+	grad.addColorStop(0.6,"#e8fbff");
+	grad.addColorStop(1,"#fffdfa");
+	ctx.fillStyle = grad;
+	ctx.fillRect(0,0,W,H);
+
+	// faint track texture
 	if (IMG.track && IMG.track.complete && IMG.track.naturalWidth) {
 		ctx.save();
-		ctx.globalAlpha = 0.12;
-		const h = Math.min(H * 0.55, IMG.track.height || H * 0.5);
+		ctx.globalAlpha = 0.18;
+		const h = Math.min(H*0.5, IMG.track.height || H*0.5);
 		ctx.drawImage(IMG.track, 0, H - h, W, h);
 		ctx.restore();
 	}
 
-	// road slices pseudo-3D
-	drawRoadSlices();
+	// road slices
+	drawRoad();
 
-	// draw bot then player
+	// draw cars (bot behind player to create overlap)
 	drawCar(bot);
 	drawCar(player);
 
@@ -252,120 +256,76 @@ function render() {
 	drawMinimap();
 }
 
-// road pseudo 3D stripes
-function drawRoadSlices() {
-	const slices = 26;
-	for (let i = 0; i < slices; i++) {
+function drawRoad() {
+	const slices = 28;
+	for (let i=0;i<slices;i++){
 		const t = i / slices;
-		const roadWTop = Math.max(200, W * 0.18);
-		const roadWBottom = Math.min(W * 0.92, W * 0.78);
-		const roadW = roadWTop + (roadWBottom - roadWTop) * (1 - t);
-		const x = (W - roadW) / 2;
-		const y = Math.floor(H * (0.12 + t * 0.88));
-		ctx.fillStyle = "#222";
-		ctx.fillRect(x, y, roadW, Math.ceil(H / slices) + 1);
-
-		if (i % 4 === 0) {
-			ctx.fillStyle = "#f2f2f2";
-			const dashW = 6;
-			ctx.fillRect(W / 2 - dashW / 2, y, dashW, Math.ceil(H / slices) + 1);
+		const roadWTop = Math.max(200, W*0.18);
+		const roadWBottom = Math.min(W*0.92, W*0.78);
+		const roadW = roadWTop + (roadWBottom - roadWTop)*(1 - t);
+		const x = (W - roadW)/2;
+		const y = Math.floor(H*(0.12 + t*0.86));
+		ctx.fillStyle = (i%2===0) ? "#e6e6e6" : "#d9d9d9";
+		ctx.fillRect(x, y, roadW, Math.ceil(H/slices)+1);
+		// center line
+		if (i%3===0) {
+			ctx.fillStyle = "#ffd95a";
+			ctx.fillRect(W/2 - 6/2, y, 6, Math.ceil(H/slices)+1);
 		}
 	}
 }
 
-// draw car with fallback
+// car drawing with image fallback
 function drawCar(c) {
-	const img = (c === player) ? c.img : c.img;
+	const img = (c===player) ? IMG.player : IMG.bot;
 	if (img && img.complete && img.naturalWidth) {
 		ctx.save();
-		const cx = c.x + c.width / 2;
-		const cy = c.y + c.height / 2;
+		const cx = c.x + c.width/2;
+		const cy = c.y + c.height/2;
 		ctx.translate(cx, cy);
 		ctx.rotate(c.angle || 0);
-		const scale = 1 + ((c.totalProgress % totalTrack) / totalTrack) * 0 * 0; // placeholder for scale effect
-		ctx.drawImage(img, -c.width / 2, -c.height / 2, c.width * scale, c.height * scale);
-		// shadow
-		ctx.globalCompositeOperation = "destination-over";
-		ctx.fillStyle = "rgba(0,0,0,0.2)";
-		ctx.beginPath();
-		ctx.ellipse(0 + 6, c.height / 2 + 8, c.width * 0.5, c.height * 0.12, 0, 0, Math.PI * 2);
-		ctx.fill();
+		const scale = 1 + ((c === player) ? 0.03 : 0.0);
+		ctx.drawImage(img, -c.width/2*scale, -c.height/2*scale, c.width*scale, c.height*scale);
 		ctx.restore();
-		ctx.globalCompositeOperation = "source-over";
 	} else {
-		// fallback rectangle
 		ctx.save();
-		ctx.fillStyle = (c === player) ? "#ff3b3b" : "#4a90e2";
+		ctx.fillStyle = (c===player) ? "#ff3b3b" : "#2b78ff";
 		ctx.fillRect(c.x, c.y, c.width, c.height);
-		ctx.fillStyle = "#fff";
-		ctx.font = "bold 14px monospace";
-		ctx.fillText((c === player ? "YOU" : "BOT"), c.x + 8, c.y + c.height / 2 + 6);
-		// shadow bar
-		ctx.fillStyle = "rgba(0,0,0,0.2)";
-		ctx.fillRect(c.x + 6, c.y + c.height + 6, c.width - 12, 6);
 		ctx.restore();
 	}
 }
 
-// minimap draw
+// minimap simple
 function drawMinimap() {
 	if (!hudMinimapCtx || !hudMinimapCanvas) return;
-	const mmW = hudMinimapCanvas.width = Math.min(160, Math.round(W * 0.12));
-	const mmH = hudMinimapCanvas.height = Math.min(200, Math.round(H * 0.18));
-	hudMinimapCtx.clearRect(0, 0, mmW, mmH);
-	hudMinimapCtx.fillStyle = "#111";
-	hudMinimapCtx.fillRect(0, 0, mmW, mmH);
-	hudMinimapCtx.fillStyle = "#333";
-	hudMinimapCtx.fillRect(6, 10, mmW - 12, mmH - 20);
-
-	const px = 6 + ((player.totalProgress % totalTrack) / totalTrack) * (mmW - 12);
-	const bx = 6 + ((bot.totalProgress % totalTrack) / totalTrack) * (mmW - 12);
-
-	hudMinimapCtx.fillStyle = "#ff3b3b";
-	hudMinimapCtx.fillRect(px - 3, mmH / 2 - 6, 6, 12);
-	hudMinimapCtx.fillStyle = "#4a90e2";
-	hudMinimapCtx.fillRect(bx - 3, mmH / 2 + 10, 6, 12);
+	const mmW = hudMinimapCanvas.width = Math.min(160, Math.floor(W*0.12));
+	const mmH = hudMinimapCanvas.height = Math.min(90, Math.floor(H*0.12));
+	hudMinimapCtx.clearRect(0,0,mmW,mmH);
+	hudMinimapCtx.fillStyle = "#eee";
+	hudMinimapCtx.fillRect(4,4,mmW-8, mmH-8);
+	hudMinimapCtx.fillStyle = "#bbb";
+	hudMinimapCtx.fillRect(8,10, mmW-16, mmH-28);
+	const px = 8 + ((player.totalProgress % TOTAL_TRACK_LENGTH)/TOTAL_TRACK_LENGTH)*(mmW-16);
+	const bx = 8 + ((bot.totalProgress % TOTAL_TRACK_LENGTH)/TOTAL_TRACK_LENGTH)*(mmW-16);
+	hudMinimapCtx.fillStyle = "#c62828";
+	hudMinimapCtx.fillRect(px-3, mmH/2 - 6, 6, 12);
+	hudMinimapCtx.fillStyle = "#1565c0";
+	hudMinimapCtx.fillRect(bx-3, mmH/2 - 6, 6, 12);
 }
 
-// HUD helpers
+// === HUD/timer helpers ===
 function updateHUD() {
 	posDisplay.textContent = (player.totalProgress >= bot.totalProgress) ? "POS 1/2" : "POS 2/2";
-	lapDisplay.textContent = `LAP ${player.lapsCompleted}/${CONFIG.LAPS_TO_FINISH}`;
-	const speedKmh = Math.round(player.speed * 15);
-	hudSpeedVal.textContent = String(speedKmh).padStart(3, "0");
-	// rpm bar
-	updateRpmBar(player.speed / CONFIG.MAX_SPEED);
-	// distance remaining for current lap (km)
-	const rem = totalTrack - (player.totalProgress % totalTrack);
-	const remKm = (rem * 0.1) / 1000;
-	const distElem = document.getElementById("hudDist");
-	if (distElem) distElem.textContent = remKm.toFixed(2) + " km";
+	lapDisplay.textContent = `LAP ${player.laps}/${CONFIG.LAPS_TO_FINISH}`;
+	hudSpeedVal.textContent = String(Math.round(player.speed*15)).padStart(3,"0");
 }
-
-function updateRpmBar(norm) {
-	const segs = document.querySelectorAll(".rpm-segment");
-	const count = segs.length;
-	const active = Math.round(norm * count);
-	for (let i = 0; i < count; i++) {
-		segs[i].className = "rpm-segment";
-		if (i < active) {
-			const pct = i / count;
-			if (pct < 0.6) segs[i].classList.add("active-green");
-			else if (pct < 0.85) segs[i].classList.add("active-yellow");
-			else segs[i].classList.add("active-red");
-		}
-	}
-}
-
-// timer
 function updateTimer() {
-	if (!startTime) return;
+	if (!startTime) startTime = performance.now();
 	const now = performance.now();
 	const elapsed = now - startTime;
-	const ms = Math.floor(elapsed % 1000);
-	const s = Math.floor((elapsed / 1000) % 60);
-	const m = Math.floor((elapsed / (60 * 1000)) % 60);
-	if (hudTime) hudTime.textContent = `TIME ${String(m).padStart(2,"0")}'${String(s).padStart(2,"0")}"${String(Math.floor(ms/10)).padStart(2,"0")}`;
+	const s = Math.floor(elapsed/1000)%60;
+	const m = Math.floor(elapsed/60000);
+	hudTime.textContent = `TIME ${String(m).padStart(2,"0")}'${String(s).padStart(2,"0")}"`;
 }
 
 // finish
@@ -376,44 +336,37 @@ function finishRace() {
 		bestTimeMs = Math.floor(elapsed);
 		localStorage.setItem("bestTimeMs", String(bestTimeMs));
 	}
-	// format best
-	const bm = bestTimeMs;
-	const ms = Math.floor(bm % 1000);
-	const s = Math.floor((bm / 1000) % 60);
-	const m = Math.floor((bm / (60 * 1000)) % 60);
-	if (hudBestTime) hudBestTime.textContent = `BEST ${String(m).padStart(2,"0")}'${String(s).padStart(2,"0")}"${String(Math.floor(ms/10)).padStart(2,"0")}`;
-	alert(`${player.name}, corrida finalizada! Voltas: ${player.lapsCompleted}/${CONFIG.LAPS_TO_FINISH}`);
+	alert(`${player.name}, corrida finalizada! Voltas: ${player.laps}/${CONFIG.LAPS_TO_FINISH}`);
 	menuDiv.style.display = "flex";
-	gameDiv.style.display = "none";
-	clearTimeout(easterTimer);
+	document.getElementById("game").style.display = "none";
 }
 
-// util functions
+// helpers
 function rectsOverlap(a,b) {
-	if (!a || !b) return false;
-	return !(a.x > (b.x + (b.width||b.w)) || (a.x + (a.width||a.w)) < b.x || a.y > (b.y + (b.height||b.h)) || (a.y + (a.height||a.h)) < b.y);
+	if(!a||!b) return false;
+	return !(a.x > b.x+(b.width||b.w) || a.x+(a.width||a.w) < b.x || a.y > b.y+(b.height||b.h) || a.y+(a.height||a.h) < b.y);
 }
 function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
-function debug(m) { if (debugDiv) debugDiv.textContent = m; console.log("[GAME]", m); }
-function drawMenuFrame() {
+function debug(m){ if (debugDiv) debugDiv.textContent = m; console.log("[GAME]", m); }
+function drawMenuPreview(){
 	onResize();
-	ctx.fillStyle = "#071023";
+	ctx.fillStyle = "#0b2340";
 	ctx.fillRect(0,0,W,H);
 	if (IMG.track && IMG.track.complete) {
 		ctx.globalAlpha = 0.12;
-		const h = Math.min(H*0.6, IMG.track.height || H*0.5);
-		ctx.drawImage(IMG.track, 0, H - h, W, h);
+		const h = Math.min(H*0.5, IMG.track.height||H*0.5);
+		ctx.drawImage(IMG.track, 0, H-h, W, h);
 		ctx.globalAlpha = 1;
 	}
 }
-function onResize() {
+function onResize(){
 	W = window.innerWidth; H = window.innerHeight;
 	if (canvas) { canvas.width = W; canvas.height = H; }
 	if (hudMinimapCanvas) {
-		hudMinimapCanvas.width = Math.min(160, Math.floor(W * 0.12));
-		hudMinimapCanvas.height = Math.min(200, Math.floor(H * 0.18));
+		hudMinimapCanvas.width = Math.min(160, Math.floor(W*0.12));
+		hudMinimapCanvas.height = Math.min(90, Math.floor(H*0.12));
 	}
 }
 
-// start it
+// start
 safeStartSetup();

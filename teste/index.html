@@ -1,47 +1,39 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-	<meta charset="UTF-8" />
-	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-	<title>Next-Gen Turbo Racing — Simple</title>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width,initial-scale=1" />
+	<title>Next-Gen Turbo Racing — Desktop</title>
 	<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 	<link rel="stylesheet" href="style.css" />
 </head>
 <body>
-	<canvas id="gameCanvas"></canvas>
-
-	<div id="menu">
+	<!-- MENU -->
+	<div id="menu" class="menu">
 		<h1>Next-Gen Turbo Racing</h1>
-		<input type="text" id="playerName" placeholder="Seu nome de piloto" />
-		<button id="startGameBtn">Começar Corrida</button>
-		<button id="resetDataBtn">Limpar Nome Salvo</button>
-		<div id="debug"></div>
+		<input id="playerName" type="text" placeholder="Digite seu nome (salvo localmente)" />
+		<div class="menu-row">
+			<button id="startGameBtn">Começar Corrida</button>
+			<button id="resetDataBtn">Limpar Nome</button>
+		</div>
+		<small>Controles: ↑ acelera · ↓ freia · ← → virar</small>
+		<div id="debug" style="margin-top:12px;color:#ccc;font-size:12px;"></div>
 	</div>
 
-	<div id="game" style="display:none;">
+	<!-- JOGO -->
+	<canvas id="gameCanvas"></canvas>
+
+	<div id="game" class="game" style="display:none;">
 		<div id="hud-container">
-			<div id="hud-top-left">
+			<div id="hud-left">
 				<div id="pos-display" class="hud-item">POS 1/2</div>
 				<div id="lap-display" class="hud-item">LAP 0/2</div>
 			</div>
-
-			<div id="hud-top-right">
-				<div id="hud-speedometer">
-					<div id="hud-speed-display"><span id="hudSpeedVal">000</span> <span class="unit">KM/H</span></div>
-					<div id="hud-rpm-bar">
-						<div class="rpm-segment"></div><div class="rpm-segment"></div><div class="rpm-segment"></div>
-						<div class="rpm-segment"></div><div class="rpm-segment"></div><div class="rpm-segment"></div>
-						<div class="rpm-segment"></div><div class="rpm-segment"></div><div class="rpm-segment"></div>
-					</div>
-				</div>
-
-				<div id="hud-timer">
-					<div id="hudTime" class="hud-item">TIME 00'00"00</div>
-					<div id="hudBestTime" class="hud-item">BEST --'--" --</div>
-				</div>
+			<div id="hud-right">
+				<div id="hud-speed-display" class="hud-item"><span id="hudSpeedVal">000</span> KM/H</div>
+				<div id="hud-time" class="hud-item">TIME 00'00"</div>
 			</div>
 		</div>
-
 		<div id="hud-minimap-container">
 			<canvas id="hudMinimap"></canvas>
 		</div>
