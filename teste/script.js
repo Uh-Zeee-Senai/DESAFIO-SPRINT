@@ -1,372 +1,349 @@
-// === CONFIGURAÇÕES (troque apenas aqui se quiser) ===
+// === CONFIG (edite só aqui) ===
 const CONFIG = {
-	PLAYER_IMG: "ngtr.png",
-	BOT_IMG: "bot.png",
-	TRACK_BG: "track.jpg",
+	PLAYER_IMG: "ngtr.png",        // sprite top-down do player
+	RIVAL_IMG: "bot.png",          // sprite top-down do rival
+	ROAD_IMG: "road.png",          // textura/estrada (opcional)
+	BG_LEFT: "bg_left.png",        // lateral esquerda (parallax), opcional
+	BG_RIGHT: "bg_right.png",      // lateral direita (parallax), opcional
 
-	MAX_SPEED: 18,    // unidade interna
-	ACCEL: 0.36,
-	BRAKE: 1.2,
-	FRICTION: 0.04,
-	TURN_SPEED: 5.2,
+	MAX_SPEED: 14,    // velocidade máxima (unidade interna)
+	ACCEL: 0.35,      // aceleração
+	BRAKE: 0.9,       // freio
+	FREEZE_FRICTION: 0.05,
+	TURN_SPEED: 3.8,  // rotação lateral
+	PROGRESS_SCALE: 0.6, // quanto o speed avança a pista por frame
 
-	SECTORS: [
-		{ name: "Alpha Track", length: 30000 },
-		{ name: "Bravo Track", length: 30000 }
-	],
 	LAPS_TO_FINISH: 2
 };
 
-// progress scale (affects how fast you cross long sectors)
-const PROGRESS_SCALE = 0.65;
-
-// === variáveis globais ===
+// === Globals ===
 let canvas, ctx, W, H;
 let menuDiv, gameDiv, startBtn, resetBtn, nameInput, debugDiv;
-let hudSpeedVal, posDisplay, lapDisplay, hudTime;
-let hudMinimapCanvas, hudMinimapCtx;
+let hudPlayerName, hudPos, hudSpeed, hudLap;
+let player, rival;
+let keys = {}, gameRunning = false;
+let lastTime = 0;
+let trackOffset = 0; // deslocamento vertical da estrada (simula movimento)
+let startTime = 0, bestTimeMs = parseInt(localStorage.getItem("bestTimeMs") || "0",10) || 0;
+let TOTAL_TRACK = 100000; // units; we keep simple looped track
+let playerProgress = 0, rivalProgress = 0;
+let images = {};
 
-let player, bot;
-let TOTAL_TRACK_LENGTH = CONFIG.SECTORS.reduce((a,s)=>a+(s.length||0), 0);
-let currentSectorIndex = 0;
-let sectorProgress = 0;
-let gameRunning = false;
-let keys = {};
-let lastFrame = 0;
-let startTime = 0;
-let bestTimeMs = parseInt(localStorage.getItem("bestTimeMs")||"0",10) || 0;
-
-// preload images (fallbacks allowed)
-const IMG = {
-	player: loadIfExists(CONFIG.PLAYER_IMG),
-	bot: loadIfExists(CONFIG.BOT_IMG),
-	track: loadIfExists(CONFIG.TRACK_BG)
-};
-
-function loadIfExists(src) {
-	const im = new Image();
-	if (!src) return im;
-	im.src = src;
-	im.onload = ()=> console.log("Loaded:", src);
-	im.onerror = ()=> console.warn("Missing:", src);
-	return im;
+// === Preload images (safe) ===
+function loadImg(src) {
+	const img = new Image();
+	if (!src) return img;
+	img.src = src;
+	img.onerror = () => console.warn("Image not found:", src);
+	return img;
 }
 
-// === setup seguro ===
-function safeStartSetup() {
-	window.addEventListener("DOMContentLoaded", async () => {
-		canvas = document.getElementById("gameCanvas");
-		ctx = canvas ? canvas.getContext("2d") : null;
-		menuDiv = document.getElementById("menu");
-		gameDiv = document.getElementById("game");
-		startBtn = document.getElementById("startGameBtn");
-		resetBtn = document.getElementById("resetDataBtn");
-		nameInput = document.getElementById("playerName");
-		debugDiv = document.getElementById("debug");
-		hudSpeedVal = document.getElementById("hudSpeedVal");
-		posDisplay = document.getElementById("pos-display");
-		lapDisplay = document.getElementById("lap-display");
-		hudTime = document.getElementById("hud-time");
-		hudMinimapCanvas = document.getElementById("hudMinimap");
-		hudMinimapCtx = hudMinimapCanvas ? hudMinimapCanvas.getContext("2d") : null;
-
-		if (!canvas || !ctx) {
-			console.error("Canvas não encontrado (id=gameCanvas).");
-			if (debugDiv) debugDiv.textContent = "Erro: canvas não encontrado.";
-			return;
-		}
-
-		// restore name
-		const last = localStorage.getItem("lastPlayer");
-		if (last) nameInput.value = last;
-
-		// events
-		startBtn && startBtn.addEventListener("click", onStart);
-		resetBtn && resetBtn.addEventListener("click", ()=>{
-			localStorage.removeItem("lastPlayer");
-			if (nameInput) nameInput.value = "";
-			debug("Nome salvo limpo.");
-		});
-		window.addEventListener("resize", onResize);
-		window.addEventListener("keydown", e => { keys[e.key] = true; });
-		window.addEventListener("keyup", e => { keys[e.key] = false; });
-
-		onResize();
-		await waitForImages([IMG.player, IMG.bot, IMG.track], 1200);
-		drawMenuPreview();
-	});
-}
-function waitForImages(arr, timeout=1200) {
-	return new Promise(resolve=>{
-		let rem = arr.length;
-		if (rem===0) return resolve();
-		let done=false;
-		const one = ()=>{ rem--; if(rem<=0 && !done){ done=true; resolve(); } };
-		for(const im of arr) {
-			if(!im) { one(); continue; }
-			if(im.complete && im.naturalWidth) { one(); continue; }
-			im.onload = one; im.onerror = one;
-		}
-		setTimeout(()=>{ if(!done){ done=true; resolve(); } }, timeout);
-	});
+// create default simple sprites (if images missing) - generate canvas images
+function makePlaceholderCar(color = "#ff3b3b") {
+	const c = document.createElement("canvas");
+	c.width = 120; c.height = 60;
+	const g = c.getContext("2d");
+	g.fillStyle = color;
+	g.fillRect(6,12,108,36);
+	g.fillStyle = "#222";
+	g.fillRect(12,16,28,28);
+	g.fillRect(80,16,28,28);
+	g.fillStyle = "#fff";
+	g.fillRect(22,22,8,8);
+	g.fillRect(88,22,8,8);
+	return c;
 }
 
-// === start / init ===
-function onStart() {
-	try {
-		const name = (nameInput && nameInput.value) ? nameInput.value.trim() : "Piloto";
-		localStorage.setItem("lastPlayer", name);
-		initRace(name);
-		menuDiv.style.display = "none";
-		document.getElementById("game").style.display = "block";
-		gameRunning = true;
-		startTime = performance.now();
-		lastFrame = performance.now();
-		requestAnimationFrame(loop);
-	} catch(e) {
-		console.error("Erro onStart:", e);
-		debug("Erro onStart: " + e.message);
-	}
-}
-function initRace(name) {
+// safe init (wait for DOM)
+window.addEventListener("DOMContentLoaded", () => {
+	// DOM refs
+	canvas = document.getElementById("gameCanvas");
+	ctx = canvas.getContext("2d");
+	menuDiv = document.getElementById("menu");
+	gameDiv = document.getElementById("game");
+	startBtn = document.getElementById("startBtn");
+	resetBtn = document.getElementById("resetBtn");
+	nameInput = document.getElementById("playerName");
+	debugDiv = document.getElementById("debug");
+
+	hudPlayerName = document.getElementById("playerNameHud");
+	hudPos = document.getElementById("posHud");
+	hudSpeed = document.getElementById("speedHud");
+	hudLap = document.getElementById("lapHud");
+
+	// load images
+	images.player = loadImg(CONFIG.PLAYER_IMG);
+	images.rival = loadImg(CONFIG.RIVAL_IMG);
+	images.road = loadImg(CONFIG.ROAD_IMG);
+	images.bgLeft = loadImg(CONFIG.BG_LEFT);
+	images.bgRight = loadImg(CONFIG.BG_RIGHT);
+
+	// if images fail to load, use placeholder
+	images.player.onerror = images.rival.onerror = images.road.onerror = () => {};
+	images.player.onload = images.rival.onload = images.road.onload = () => {};
+
+	// fallback placeholders if not loaded after short time
+	setTimeout(() => {
+		if (!images.player || !images.player.complete || !images.player.naturalWidth) images.player = makePlaceholderCar("#ff3b3b");
+		if (!images.rival || !images.rival.complete || !images.rival.naturalWidth) images.rival = makePlaceholderCar("#4a90e2");
+	}, 300);
+
+	// events
+	startBtn.addEventListener("click", startGame);
+	resetBtn.addEventListener("click", () => { localStorage.removeItem("lastPlayer"); nameInput.value = ""; });
+
+	window.addEventListener("keydown", e => { keys[e.key] = true; });
+	window.addEventListener("keyup", e => { keys[e.key] = false; });
+
 	onResize();
+	window.addEventListener("resize", onResize);
+
+	// restore name
+	const saved = localStorage.getItem("lastPlayer");
+	if (saved) nameInput.value = saved;
+});
+
+// === Start / Init ===
+function startGame() {
+	const name = (nameInput.value || "Piloto").trim();
+	localStorage.setItem("lastPlayer", name);
+
+	// init player and rival
 	player = {
 		name,
-		x: W*0.5 - 60,
-		y: H - 200,
-		width: 120, height: 160,
-		speed: 0, angle: 0, boosting: false,
-		totalProgress: 0, laps: 0
+		x: 0, y: 0,
+		angle: 0,
+		speed: 0,
+		width: 64, height: 32,
+		sprite: images.player
 	};
-	bot = {
+	rival = {
 		name: "Rival",
-		x: W*0.5 + 80,
-		y: H - 260,
-		width: 120, height: 160,
-		speed: CONFIG.MAX_SPEED*0.9, aiPhase: 0,
-		totalProgress: 0, laps: 0
+		x: 0, y: 0,
+		angle: 0,
+		speed: CONFIG.MAX_SPEED * 0.85,
+		width: 64, height: 32,
+		sprite: images.rival,
+		aiAggro: 0.5
 	};
-	currentSectorIndex = 0;
-	sectorProgress = 0;
-	TOTAL_TRACK_LENGTH = CONFIG.SECTORS.reduce((a,s)=>a+(s.length||0),0);
-	debug("Corrida iniciada. track=" + TOTAL_TRACK_LENGTH);
-	updateHUD();
-}
 
-// === main loop ===
-function loop(ts) {
-	if(!gameRunning) return;
-	const dt = Math.min(48, ts - lastFrame) / 16.6667;
-	lastFrame = ts;
-	update(dt);
-	render();
+	// reset state
+	playerProgress = 0;
+	rivalProgress = 0;
+	trackOffset = 0;
+	startTime = performance.now();
+	lastTime = performance.now();
+	gameRunning = true;
+	menuDiv.style.display = "none";
+	gameDiv.style.display = "block";
+	hudPlayerName.textContent = player.name;
+	hudLap.textContent = `Volta: 0/${CONFIG.LAPS_TO_FINISH}`;
+
 	requestAnimationFrame(loop);
 }
 
-// === update game logic ===
-function update(dt) {
-	// player controls
-	if (keys["ArrowUp"] || keys["w"]) player.speed += CONFIG.ACCEL * dt;
-	else player.speed -= CONFIG.FRICTION * dt;
-	if (keys["ArrowDown"] || keys["s"]) player.speed -= CONFIG.BRAKE * dt;
-	player.speed = clamp(player.speed, 0, CONFIG.MAX_SPEED);
-
-	let lat = 0;
-	if (keys["ArrowLeft"] || keys["a"]) lat = -1;
-	if (keys["ArrowRight"] || keys["d"]) lat = 1;
-	player.x += lat * CONFIG.TURN_SPEED * (1 + (player.speed / CONFIG.MAX_SPEED)) * dt;
-	player.angle = lat * -0.12 * (player.speed / CONFIG.MAX_SPEED);
-	const margin = 0.12 * W;
-	player.x = clamp(player.x, margin, W - margin - player.width);
-
-	// bot AI simple: fluctuate, try to match progress
-	const noise = (Math.sin(performance.now()/800 + bot.aiPhase) * 0.4) + (Math.random()-0.5)*0.2;
-	const want = CONFIG.MAX_SPEED * (0.85 + noise*0.05);
-	bot.speed += (want - bot.speed) * 0.02 * dt;
-	bot.aiPhase += 0.005 * dt;
-	const desiredX = W*0.5 + Math.sin(performance.now()/1000 + bot.aiPhase)*80;
-	bot.x += (desiredX - bot.x) * 0.02 * dt;
-	bot.x = clamp(bot.x, margin, W - margin - bot.width);
-
-	// progress both
-	const pInc = player.speed * PROGRESS_SCALE * dt;
-	const bInc = bot.speed * PROGRESS_SCALE * dt;
-	player.totalProgress += pInc;
-	bot.totalProgress += bInc;
-
-	// compute sector/progress from player
-	let pRem = player.totalProgress % TOTAL_TRACK_LENGTH;
-	let acc = 0;
-	for (let i=0;i<CONFIG.SECTORS.length;i++){
-		const len = CONFIG.SECTORS[i].length;
-		if (pRem < acc + len) {
-			currentSectorIndex = i;
-			sectorProgress = pRem - acc;
-			break;
-		}
-		acc += len;
-	}
-
-	// laps
-	const playerLap = Math.floor(player.totalProgress / TOTAL_TRACK_LENGTH);
-	if (playerLap !== player.laps) {
-		player.laps = playerLap;
-		if (player.laps >= CONFIG.LAPS_TO_FINISH) {
-			finishRace();
-			return;
-		}
-	}
-	bot.laps = Math.floor(bot.totalProgress / TOTAL_TRACK_LENGTH);
-
-	// update timer & hud
-	updateTimer();
-	updateHUD();
+// === Resize ===
+function onResize() {
+	W = canvas.width = window.innerWidth;
+	H = canvas.height = window.innerHeight;
 }
 
-// === render visuals ===
+// === Main loop ===
+function loop(ts) {
+	if (!gameRunning) return;
+	const dt = Math.min(40, ts - lastTime) / 16.6667; // dt normalized ~1 per frame
+	lastTime = ts;
+
+	update(dt);
+	render();
+
+	requestAnimationFrame(loop);
+}
+
+// === Update game logic ===
+function update(dt) {
+	// player input
+	if (keys["ArrowUp"] || keys["w"]) {
+		player.speed += CONFIG.ACCEL * dt;
+	} else {
+		player.speed -= CONFIG.FREEZE_FRICTION * dt;
+	}
+	if (keys["ArrowDown"] || keys["s"]) player.speed -= CONFIG.BRAKE * dt;
+
+	player.speed = clamp(player.speed, 0, CONFIG.MAX_SPEED);
+
+	// steering modifies lateral movement visually (angle)
+	let steer = 0;
+	if (keys["ArrowLeft"] || keys["a"]) steer = -1;
+	if (keys["ArrowRight"] || keys["d"]) steer = 1;
+	player.angle = steer * 0.12 * (player.speed / CONFIG.MAX_SPEED);
+
+	// simulate progress along track (vertical movement)
+	const progInc = player.speed * CONFIG.PROGRESS_SCALE * dt;
+	playerProgress += progInc;
+	rivalProgress += rival.speed * CONFIG.PROGRESS_SCALE * dt;
+
+	// loop track
+	if (playerProgress >= TOTAL_TRACK) playerProgress -= TOTAL_TRACK;
+	if (rivalProgress >= TOTAL_TRACK) rivalProgress -= TOTAL_TRACK;
+
+	// update track scroll offset (visual)
+	trackOffset += player.speed * 0.6 * dt;
+	if (trackOffset > H) trackOffset -= H;
+
+	// simple rival AI: tries to match player's progress plus small randomness
+	const diff = (playerProgress - rivalProgress);
+	let rivalTarget = CONFIG.MAX_SPEED * (0.8 + rival.aiAggro * 0.25) + diff * 0.0001;
+	// clamp
+	rivalTarget = clamp(rivalTarget, 1, CONFIG.MAX_SPEED * 1.05);
+	// smooth speed change
+	rival.speed += (rivalTarget - rival.speed) * 0.02 * dt;
+	// small lateral wobble for visuals
+	rival.angle = Math.sin(performance.now()/800) * 0.08;
+
+	// update HUD
+	const speedKmh = Math.round(player.speed * 12); // tuning
+	hudSpeed.textContent = `Velocidade: ${speedKmh} km/h`;
+	hudPos.textContent = (playerProgress >= rivalProgress) ? "Posição: 1/2" : "Posição: 2/2";
+
+	// laps: count when player completes full track
+	const lapsDone = Math.floor((playerProgress) / TOTAL_TRACK);
+	hudLap.textContent = `Volta: ${lapsDone % CONFIG.LAPS_TO_FINISH}/${CONFIG.LAPS_TO_FINISH}`;
+	// finish condition (player completes LAPS_TO_FINISH loops)
+	if (Math.floor((playerProgress) / TOTAL_TRACK) >= CONFIG.LAPS_TO_FINISH) {
+		endRace();
+	}
+}
+
+// === Render (top-down aerial) ===
 function render() {
 	// clear
 	ctx.clearRect(0,0,W,H);
 
-	// brighter background sky + horizon
-	const grad = ctx.createLinearGradient(0,0,0,H);
-	grad.addColorStop(0,"#bde7ff");
-	grad.addColorStop(0.6,"#e8fbff");
-	grad.addColorStop(1,"#fffdfa");
-	ctx.fillStyle = grad;
-	ctx.fillRect(0,0,W,H);
+	// background sides (parallax)
+	drawBackground();
 
-	// faint track texture
-	if (IMG.track && IMG.track.complete && IMG.track.naturalWidth) {
-		ctx.save();
-		ctx.globalAlpha = 0.18;
-		const h = Math.min(H*0.5, IMG.track.height || H*0.5);
-		ctx.drawImage(IMG.track, 0, H - h, W, h);
-		ctx.restore();
-	}
-
-	// road slices
+	// draw repeated road stripes (vertical scrolling)
 	drawRoad();
 
-	// draw cars (bot behind player to create overlap)
-	drawCar(bot);
-	drawCar(player);
+	// compute screen positions: player always near bottom center; rival relative offset above
+	const centerX = W/2;
+	const playerY = H * 0.78;
+	const rivalY = playerY - ((playerProgress - rivalProgress) * 0.0006 * H); // visual relative distance
+	// cap rivalY within screen
+	const rivalYc = clamp(rivalY, H*0.12, H*0.7);
 
-	// minimap
-	drawMinimap();
+	// draw rival behind (farther)
+	drawCar(rival, centerX, rivalYc);
+
+	// draw player on top center
+	drawCar(player, centerX, playerY, true);
+
+	// optional HUD overlays (already DOM)
 }
 
+// draw background (simple parallax left/right, and horizon)
+function drawBackground() {
+	// sky gradient
+	const g = ctx.createLinearGradient(0,0,0,H*0.6);
+	g.addColorStop(0, "#87CEEB");
+	g.addColorStop(1, "#cfefff");
+	ctx.fillStyle = g;
+	ctx.fillRect(0,0,W,H*0.6);
+
+	// ground sides
+	ctx.fillStyle = "#2ecc71";
+	ctx.fillRect(0,H*0.6,W,H*0.4);
+
+	// draw left/right decorative if images exist
+	if (images.bgLeft && images.bgLeft.complete && images.bgLeft.naturalWidth) {
+		const scale = (H/ images.bgLeft.height) * 0.6;
+		const w = images.bgLeft.width * scale;
+		ctx.drawImage(images.bgLeft, 20, H*0.58 - (trackOffset%100), w, images.bgLeft.height*scale);
+	}
+	if (images.bgRight && images.bgRight.complete && images.bgRight.naturalWidth) {
+		const scale = (H/ images.bgRight.height) * 0.6;
+		const w = images.bgRight.width * scale;
+		ctx.drawImage(images.bgRight, W - w - 20, H*0.58 - (trackOffset%100), w, images.bgRight.height*scale);
+	}
+}
+
+// draw road with center dashed line and lane markers
 function drawRoad() {
-	const slices = 28;
-	for (let i=0;i<slices;i++){
-		const t = i / slices;
-		const roadWTop = Math.max(200, W*0.18);
-		const roadWBottom = Math.min(W*0.92, W*0.78);
-		const roadW = roadWTop + (roadWBottom - roadWTop)*(1 - t);
-		const x = (W - roadW)/2;
-		const y = Math.floor(H*(0.12 + t*0.86));
-		ctx.fillStyle = (i%2===0) ? "#e6e6e6" : "#d9d9d9";
-		ctx.fillRect(x, y, roadW, Math.ceil(H/slices)+1);
-		// center line
-		if (i%3===0) {
-			ctx.fillStyle = "#ffd95a";
-			ctx.fillRect(W/2 - 6/2, y, 6, Math.ceil(H/slices)+1);
-		}
+	const roadW = Math.min(W*0.5, 900);
+	const x = (W - roadW)/2;
+	const laneW = roadW/3;
+
+	// road base
+	ctx.fillStyle = "#3a3a3a";
+	ctx.fillRect(x, 0, roadW, H);
+
+	// side markers
+	ctx.fillStyle = "#111";
+	ctx.fillRect(x+4, 0, 6, H);
+	ctx.fillRect(x+roadW-10, 0, 6, H);
+
+	// dashed center line (scrolling)
+	const dashH = 40;
+	const gap = 28;
+	const total = dashH + gap;
+	let start = - (trackOffset % total);
+	ctx.fillStyle = "#f8f3e3";
+	for (let y = start; y < H; y += total) {
+		ctx.fillRect(W/2 - 6/2, y, 6, dashH);
 	}
+
+	// lane boundaries (subtle)
+	ctx.strokeStyle = "rgba(255,255,255,0.06)";
+	ctx.lineWidth = 2;
+	ctx.beginPath();
+	ctx.moveTo(x + laneW, 0);
+	ctx.lineTo(x + laneW, H);
+	ctx.moveTo(x + 2*laneW, 0);
+	ctx.lineTo(x + 2*laneW, H);
+	ctx.stroke();
 }
 
-// car drawing with image fallback
-function drawCar(c) {
-	const img = (c===player) ? IMG.player : IMG.bot;
-	if (img && img.complete && img.naturalWidth) {
-		ctx.save();
-		const cx = c.x + c.width/2;
-		const cy = c.y + c.height/2;
-		ctx.translate(cx, cy);
-		ctx.rotate(c.angle || 0);
-		const scale = 1 + ((c === player) ? 0.03 : 0.0);
-		ctx.drawImage(img, -c.width/2*scale, -c.height/2*scale, c.width*scale, c.height*scale);
-		ctx.restore();
+// draw car (rotated), flip for top-down look if needed
+function drawCar(car, sx, sy, isPlayer = false) {
+	ctx.save();
+	ctx.translate(sx, sy);
+	ctx.rotate(car.angle || 0);
+	// scale a bit by speed (visual feedback)
+	const scale = 1 + (car.speed / CONFIG.MAX_SPEED) * 0.06;
+	ctx.scale(scale, scale);
+
+	if (car.sprite && car.sprite.complete && car.sprite.naturalWidth) {
+		ctx.drawImage(car.sprite, -car.width/2, -car.height/2, car.width, car.height);
+	} else if (car.sprite && car.sprite.getContext) {
+		// canvas placeholder
+		ctx.drawImage(car.sprite, -car.width/2, -car.height/2, car.width, car.height);
 	} else {
-		ctx.save();
-		ctx.fillStyle = (c===player) ? "#ff3b3b" : "#2b78ff";
-		ctx.fillRect(c.x, c.y, c.width, c.height);
-		ctx.restore();
+		// fallback simple rectangle
+		ctx.fillStyle = isPlayer ? "#ff3b3b" : "#4a90e2";
+		ctx.fillRect(-car.width/2, -car.height/2, car.width, car.height);
 	}
+	// small shadow
+	ctx.fillStyle = "rgba(0,0,0,0.12)";
+	ctx.beginPath();
+	ctx.ellipse(6, car.height/2 + 8, car.width*0.5, 6, 0, 0, Math.PI*2);
+	ctx.fill();
+
+	ctx.restore();
 }
 
-// minimap simple
-function drawMinimap() {
-	if (!hudMinimapCtx || !hudMinimapCanvas) return;
-	const mmW = hudMinimapCanvas.width = Math.min(160, Math.floor(W*0.12));
-	const mmH = hudMinimapCanvas.height = Math.min(90, Math.floor(H*0.12));
-	hudMinimapCtx.clearRect(0,0,mmW,mmH);
-	hudMinimapCtx.fillStyle = "#eee";
-	hudMinimapCtx.fillRect(4,4,mmW-8, mmH-8);
-	hudMinimapCtx.fillStyle = "#bbb";
-	hudMinimapCtx.fillRect(8,10, mmW-16, mmH-28);
-	const px = 8 + ((player.totalProgress % TOTAL_TRACK_LENGTH)/TOTAL_TRACK_LENGTH)*(mmW-16);
-	const bx = 8 + ((bot.totalProgress % TOTAL_TRACK_LENGTH)/TOTAL_TRACK_LENGTH)*(mmW-16);
-	hudMinimapCtx.fillStyle = "#c62828";
-	hudMinimapCtx.fillRect(px-3, mmH/2 - 6, 6, 12);
-	hudMinimapCtx.fillStyle = "#1565c0";
-	hudMinimapCtx.fillRect(bx-3, mmH/2 - 6, 6, 12);
-}
-
-// === HUD/timer helpers ===
-function updateHUD() {
-	posDisplay.textContent = (player.totalProgress >= bot.totalProgress) ? "POS 1/2" : "POS 2/2";
-	lapDisplay.textContent = `LAP ${player.laps}/${CONFIG.LAPS_TO_FINISH}`;
-	hudSpeedVal.textContent = String(Math.round(player.speed*15)).padStart(3,"0");
-}
-function updateTimer() {
-	if (!startTime) startTime = performance.now();
-	const now = performance.now();
-	const elapsed = now - startTime;
-	const s = Math.floor(elapsed/1000)%60;
-	const m = Math.floor(elapsed/60000);
-	hudTime.textContent = `TIME ${String(m).padStart(2,"0")}'${String(s).padStart(2,"0")}"`;
-}
-
-// finish
-function finishRace() {
+// === End race / reset ===
+function endRace() {
 	gameRunning = false;
 	const elapsed = performance.now() - startTime;
 	if (!bestTimeMs || elapsed < bestTimeMs || bestTimeMs === 0) {
 		bestTimeMs = Math.floor(elapsed);
-		localStorage.setItem("bestTimeMs", String(bestTimeMs));
+		localStorage.setItem("bestTimeMs", bestTimeMs.toString());
 	}
-	alert(`${player.name}, corrida finalizada! Voltas: ${player.laps}/${CONFIG.LAPS_TO_FINISH}`);
+	alert(`${player.name} finalizou a corrida!`);
 	menuDiv.style.display = "flex";
-	document.getElementById("game").style.display = "none";
+	gameDiv.style.display = "none";
 }
 
 // helpers
-function rectsOverlap(a,b) {
-	if(!a||!b) return false;
-	return !(a.x > b.x+(b.width||b.w) || a.x+(a.width||a.w) < b.x || a.y > b.y+(b.height||b.h) || a.y+(a.height||a.h) < b.y);
-}
-function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
-function debug(m){ if (debugDiv) debugDiv.textContent = m; console.log("[GAME]", m); }
-function drawMenuPreview(){
-	onResize();
-	ctx.fillStyle = "#0b2340";
-	ctx.fillRect(0,0,W,H);
-	if (IMG.track && IMG.track.complete) {
-		ctx.globalAlpha = 0.12;
-		const h = Math.min(H*0.5, IMG.track.height||H*0.5);
-		ctx.drawImage(IMG.track, 0, H-h, W, h);
-		ctx.globalAlpha = 1;
-	}
-}
-function onResize(){
-	W = window.innerWidth; H = window.innerHeight;
-	if (canvas) { canvas.width = W; canvas.height = H; }
-	if (hudMinimapCanvas) {
-		hudMinimapCanvas.width = Math.min(160, Math.floor(W*0.12));
-		hudMinimapCanvas.height = Math.min(90, Math.floor(H*0.12));
-	}
-}
-
-// start
-safeStartSetup();
+function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
