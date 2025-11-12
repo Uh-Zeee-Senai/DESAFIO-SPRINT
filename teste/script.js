@@ -14,7 +14,7 @@ const CONFIG = {
 	MAX_DISTANCE: 999999,
 	EASTER_EGG_TIME: 10000,
 
-	// 🎯 Ajuste fácil da hitbox (nova melhoria)
+	// 🎯 Ajuste fácil da hitbox
 	HITBOX_OFFSET_X: 8,
 	HITBOX_OFFSET_Y: 15
 };
@@ -22,7 +22,7 @@ const CONFIG = {
 // === Globals ===
 let canvas, ctx, W, H;
 let menu, startBtn, restartBtn, playerNameInput, debugDiv;
-let hudName, hudDistance, hudSpeed, hudPos, hudLaps;
+let hudName, hudDistance, hudSpeed;
 let keys = {};
 let gameRunning = false;
 let lastTime = 0;
@@ -36,6 +36,19 @@ let reverseStartTime = null;
 let easterEggTriggered = false;
 let normalWinTriggered = false;
 let fiatUnoActive = false;
+let musicEnabled = false;
+
+// === Audio ===
+const gameMusic = new Audio("musicgame.mp3");
+gameMusic.loop = true;
+gameMusic.volume = 0.45;
+
+// 💥 Novos sons
+const soundCollision = new Audio("collision.mp3");
+soundCollision.volume = 0.8;
+
+const soundVictory = new Audio("victory.mp3");
+soundVictory.volume = 0.9;
 
 // === Overlays ===
 let overlayDiv;
@@ -71,6 +84,7 @@ window.addEventListener("DOMContentLoaded", () => {
 	hudSpeed = document.getElementById("hud-speed");
 
 	createOverlays();
+	addMusicToggle();
 
 	startBtn && startBtn.addEventListener("click", startGame);
 	restartBtn && restartBtn.addEventListener("click", restartGame);
@@ -82,7 +96,40 @@ window.addEventListener("DOMContentLoaded", () => {
 	drawMenuPreview();
 });
 
-// === Overlay setup ===
+// === Music toggle button ===
+function addMusicToggle() {
+	const musicBtn = document.createElement("button");
+	musicBtn.textContent = "🎵 Música: OFF";
+	Object.assign(musicBtn.style, {
+		position: "absolute",
+		bottom: "20px",
+		left: "20px",
+		padding: "8px 14px",
+		background: "#222",
+		color: "#fff",
+		border: "2px solid #555",
+		fontFamily: "'Press Start 2P', monospace",
+		cursor: "pointer",
+		zIndex: "2000"
+	});
+	musicBtn.onclick = () => {
+		musicEnabled = !musicEnabled;
+		musicBtn.textContent = musicEnabled ? "🎵 Música: ON" : "🎵 Música: OFF";
+		if (musicEnabled) gameMusic.play();
+		else gameMusic.pause();
+		localStorage.setItem("musicOn", musicEnabled);
+	};
+	document.body.appendChild(musicBtn);
+
+	// Carrega estado salvo
+	const saved = localStorage.getItem("musicOn");
+	if (saved === "true") {
+		musicEnabled = true;
+		musicBtn.textContent = "🎵 Música: ON";
+	}
+}
+
+// === Overlays ===
 function createOverlays() {
 	overlayDiv = document.createElement("div");
 	Object.assign(overlayDiv.style, {
@@ -110,6 +157,8 @@ function startGame() {
 	if (restartBtn) restartBtn.style.display = "none";
 	resetState();
 	initRun();
+
+	if (musicEnabled) gameMusic.play();
 
 	// 🔥 EASTER EGG: Fiat Uno
 	if (playerName.toLowerCase() === "fiat uno") {
@@ -147,6 +196,8 @@ function restartGame() {
 	menu.style.display = "flex";
 	overlayDiv.style.display = "none";
 	if (restartBtn) restartBtn.style.display = "none";
+	gameMusic.pause();
+	gameMusic.currentTime = 0;
 }
 
 function resetState() {
@@ -160,7 +211,6 @@ function resetState() {
 	easterEggTriggered = false;
 	normalWinTriggered = false;
 	fiatUnoActive = false;
-	if (debugDiv) debugDiv.textContent = "";
 }
 
 // === Init Run ===
@@ -260,6 +310,10 @@ function update(dt) {
 // === Overlays ===
 function showWinOverlay(isEaster) {
 	gameRunning = false;
+	gameMusic.pause();
+	soundVictory.currentTime = 0;
+	soundVictory.play();
+
 	overlayDiv.innerHTML = `
 		<h1 style="color:${isEaster ? "#00ff99" : "#ffd166"};font-size:26px;">
 			${isEaster ? "🎉 EASTER EGG DESCOBERTO! 🎉" : "🏁 VOCÊ VENCEU! 🏁"}
@@ -271,11 +325,18 @@ function showWinOverlay(isEaster) {
 	`;
 	overlayDiv.style.display = "flex";
 	document.getElementById("btnRestart").onclick = restartGame;
-	document.getElementById("btnNext").onclick = () => alert("🚧 Próxima etapa em construção!");
+	document.getElementById("btnNext").onclick = () => {
+		alert("🚧 Próxima etapa em construção!");
+		if (musicEnabled) gameMusic.play();
+	};
 }
 
 function showLoseOverlay(customMessage) {
 	gameRunning = false;
+	gameMusic.pause();
+	soundCollision.currentTime = 0;
+	soundCollision.play();
+
 	overlayDiv.innerHTML = `
 		<h1 style="color:#ff4444;font-size:26px;">${customMessage ? customMessage : "💥 COLISÃO! 💥"}</h1>
 		<p>${playerName}, você parou após ${distance}m.</p>
@@ -308,7 +369,7 @@ function render() {
 		ctx.fillStyle = CONFIG.CANVAS_BG_COLOR;
 		ctx.fillRect(0, 0, W, H);
 	}
-	const roadW = Math.floor(W * 0.9); // ⚙️ pista mais larga
+	const roadW = Math.floor(W * 0.9);
 	const roadX = Math.floor((W - roadW) / 2);
 	ctx.fillStyle = "#202830";
 	ctx.fillRect(roadX, 0, roadW, H);
