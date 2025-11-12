@@ -19,9 +19,6 @@ const CONFIG = {
 	HITBOX_OFFSET_Y: 15
 };
 
-// === PHASE (mude aqui para trocar fase) ===
-const PHASE = 1; // 1 = fase inicial (rivals descem reto). Futuro: 2 = curvas em C, etc.
-
 // === Globals ===
 let canvas, ctx, W, H;
 let menu, startBtn, restartBtn, playerNameInput, debugDiv;
@@ -40,6 +37,10 @@ let easterEggTriggered = false;
 let normalWinTriggered = false;
 let fiatUnoActive = false;
 let musicEnabled = false;
+
+// === Phase control ===
+let currentPhase = 1; // 1 = fase reta (mais fácil). 2 = fase com C / sway
+let phaseIntroShowing = false;
 
 // === Audio ===
 const gameMusic = new Audio("musicgame.mp3");
@@ -89,7 +90,8 @@ window.addEventListener("DOMContentLoaded", () => {
 	createOverlays();
 	addMusicToggle();
 
-	startBtn && startBtn.addEventListener("click", startGame);
+	// menu Start opens the phase intro, not start the race directly
+	startBtn && startBtn.addEventListener("click", () => showPhaseIntro(currentPhase));
 	restartBtn && restartBtn.addEventListener("click", restartGame);
 	window.addEventListener("resize", resize);
 	window.addEventListener("keydown", e => keys[e.key] = true);
@@ -97,11 +99,13 @@ window.addEventListener("DOMContentLoaded", () => {
 
 	resize();
 	drawMenuPreview();
+	updatePhaseLabelInMenu();
 });
 
 // === Music toggle button ===
 function addMusicToggle() {
 	const musicBtn = document.createElement("button");
+	musicBtn.id = "musicToggleBtn";
 	musicBtn.textContent = "🎵 Música: OFF";
 	Object.assign(musicBtn.style, {
 		position: "absolute",
@@ -118,8 +122,13 @@ function addMusicToggle() {
 	musicBtn.onclick = () => {
 		musicEnabled = !musicEnabled;
 		musicBtn.textContent = musicEnabled ? "🎵 Música: ON" : "🎵 Música: OFF";
-		if (musicEnabled) gameMusic.play();
-		else gameMusic.pause();
+		if (musicEnabled) {
+			// play from current time (will not autoplay without user gesture in some browsers,
+			// but user already clicked the toggle)
+			gameMusic.play().catch(()=>{});
+		} else {
+			gameMusic.pause();
+		}
 		localStorage.setItem("musicOn", musicEnabled);
 	};
 	document.body.appendChild(musicBtn);
@@ -147,12 +156,31 @@ function createOverlays() {
 		color: "white",
 		fontFamily: "'Press Start 2P', monospace",
 		textAlign: "center",
-		zIndex: "9999"
+		zIndex: "9999",
+		padding: "16px",
+		boxSizing: "border-box"
 	});
 	document.body.appendChild(overlayDiv);
 }
 
+// === UI helper: escreve a fase atual no menu (pequeno) ===
+function updatePhaseLabelInMenu() {
+	if (!menu) return;
+	let lbl = menu.querySelector(".phase-label");
+	if (!lbl) {
+		lbl = document.createElement("div");
+		lbl.className = "phase-label";
+		lbl.style.marginTop = "8px";
+		lbl.style.fontFamily = "'Press Start 2P', monospace";
+		lbl.style.fontSize = "12px";
+		lbl.style.opacity = "0.9";
+		menu.appendChild(lbl);
+	}
+	lbl.textContent = `Fase atual: ${currentPhase} ${currentPhase === 1 ? "(Reta - Fácil)" : "(Curvas em C - Difícil)"}`;
+}
+
 // === START / RESTART ===
+// startGame() agora é chamada internamente quando o jogador confirma na tela de intro da fase
 function startGame() {
 	playerName = (playerNameInput && playerNameInput.value.trim()) ? playerNameInput.value.trim() : "Piloto";
 	hudName.textContent = playerName;
@@ -161,32 +189,41 @@ function startGame() {
 	resetState();
 	initRun();
 
-	if (musicEnabled) gameMusic.play();
+	if (musicEnabled) {
+		gameMusic.currentTime = 0;
+		gameMusic.play().catch(()=>{});
+	}
 
 	// 🔥 EASTER EGG: Fiat Uno
 	if (playerName.toLowerCase() === "fiat uno") {
 		CONFIG.PLAYER_IMG = "uno.png";
 		IMAGES.player.src = CONFIG.PLAYER_IMG;
+		// Deixar realmente muito rápido: aumentar base e cap
 		CONFIG.MAX_SCROLL = 100000000;
-		CONFIG.SCROLL_BASE = 1;
-		CONFIG.SCROLL_ACCEL = 5;
+		CONFIG.SCROLL_BASE = 20000;    // alto o suficiente pra sentir "impossível"
+		CONFIG.SCROLL_ACCEL = 50000;
+		fiatUnoActive = true;
 		console.log("🔥 Fiat Uno detectado! Ative o modo Velozes e Furiosos!");
 	}
 	// 🚗 EASTER EGG: Peugeot 206
 	else if (playerName.toLowerCase() === "peugeot") {
 		CONFIG.PLAYER_IMG = "p206.png";
 		IMAGES.player.src = CONFIG.PLAYER_IMG;
+		// valores normais, mas quebra após 1000m (tratado em update)
 		CONFIG.MAX_SCROLL = 15;
 		CONFIG.SCROLL_BASE = 3.5;
 		CONFIG.SCROLL_ACCEL = 2.8;
+		fiatUnoActive = false;
 		console.log("🚗 Peugeot 206 detectado! Vamos ver até onde ele aguenta...");
 	}
 	else {
+		// resetar valores para não ficar bugado depois
 		CONFIG.MAX_SCROLL = 18;
 		CONFIG.SCROLL_BASE = 3.5;
 		CONFIG.SCROLL_ACCEL = 2.8;
 		CONFIG.PLAYER_IMG = "carro1.png";
 		IMAGES.player.src = CONFIG.PLAYER_IMG;
+		fiatUnoActive = false;
 	}
 
 	gameRunning = true;
@@ -196,11 +233,13 @@ function startGame() {
 
 function restartGame() {
 	resetState();
+	// manter na mesma fase atual
 	menu.style.display = "flex";
 	overlayDiv.style.display = "none";
 	if (restartBtn) restartBtn.style.display = "none";
 	gameMusic.pause();
 	gameMusic.currentTime = 0;
+	updatePhaseLabelInMenu();
 }
 
 function resetState() {
@@ -214,6 +253,34 @@ function resetState() {
 	easterEggTriggered = false;
 	normalWinTriggered = false;
 	fiatUnoActive = false;
+	if (debugDiv) debugDiv.textContent = "";
+}
+
+// === Phase intro screen ===
+function showPhaseIntro(phaseNumber) {
+	// mostra uma tela explicando a fase antes de começar
+	phaseIntroShowing = true;
+	overlayDiv.innerHTML = `
+		<h1 style="font-size:22px;">Fase ${phaseNumber}</h1>
+		<p style="margin-top:8px;">${phaseNumber === 1 ? "Pista reta — carros seguem em linha reta. Fácil." : "Pista com curvas em 'C' — cuidado com o desvio (mais difícil)."} </p>
+		<p style="margin-top:6px;">Controles: ← → mover | ↑ acelerar | ↓ frear/ré (segure 10s para Easter Egg)</p>
+		<div style="margin-top:18px;">
+			<button id="btnStartPhase" style="padding:10px 16px;margin-right:10px;cursor:pointer;font-family:'Press Start 2P'">Começar Fase ${phaseNumber}</button>
+			<button id="btnBackMenu" style="padding:10px 16px;cursor:pointer;font-family:'Press Start 2P'">Voltar ao Menu</button>
+		</div>
+	`;
+	overlayDiv.style.display = "flex";
+
+	document.getElementById("btnStartPhase").onclick = () => {
+		overlayDiv.style.display = "none";
+		phaseIntroShowing = false;
+		startGame(); // inicia corrida na fase atual
+	};
+	document.getElementById("btnBackMenu").onclick = () => {
+		overlayDiv.style.display = "none";
+		phaseIntroShowing = false;
+		updatePhaseLabelInMenu();
+	};
 }
 
 // === Init Run ===
@@ -257,6 +324,9 @@ function update(dt) {
 		} else if (!fiatUnoActive) {
 			if (scrollSpeed > CONFIG.SCROLL_BASE) scrollSpeed -= CONFIG.SCROLL_BASE * 0.02 * dt;
 			else if (scrollSpeed < CONFIG.SCROLL_BASE) scrollSpeed += CONFIG.SCROLL_BASE * 0.02 * dt;
+		} else {
+			// se fiatUnoActive, deixar comportamento conforme config (não resetar)
+			if (scrollSpeed < CONFIG.SCROLL_BASE) scrollSpeed = CONFIG.SCROLL_BASE;
 		}
 
 		if (keys["ArrowDown"] || keys["s"]) {
@@ -269,12 +339,15 @@ function update(dt) {
 			}
 		} else reverseStartTime = null;
 
+		// clamp
 		scrollSpeed = clamp(scrollSpeed, -CONFIG.MAX_SCROLL, CONFIG.MAX_SCROLL);
 	}
 
+	// distância e checks
 	if (scrollSpeed > 0 && !fiatUnoActive) {
 		distance += Math.round(scrollSpeed * dt);
 
+		// === Peugeot: quebra após 1000m ===
 		if (playerName.toLowerCase() === "peugeot" && distance >= 1000 && !player.crashed) {
 			player.crashed = true;
 			showLoseOverlay("💥 O Peugeot 206 quebrou após 1000m!");
@@ -290,42 +363,59 @@ function update(dt) {
 		distance = Math.max(0, distance + Math.round(scrollSpeed * dt));
 	}
 
+	// spawn rivals
 	const now = performance.now();
 	if (now >= spawnTimer) {
 		spawnRival();
 		spawnTimer = now + randInterval();
 	}
 
+	// update rivals positions
 	for (let i = rivals.length - 1; i >= 0; i--) {
 		const r = rivals[i];
-
-		// === Fase 1: rivais descem reto (sem sway) ===
-		if (PHASE === 1) {
-			// vertical movement only
+		// comportamento dependendo da fase:
+		if (currentPhase === 1) {
+			// fase 1: carros seguem reto (sem sway)
 			r.y += (scrollSpeed >= 0 ? scrollSpeed : scrollSpeed * 0.6) * dt + r.speed * dt;
-			// mantém r.x estável (linha reta)
+			// manter x fixo (r.x)
 		} else {
-			// comportamento original com sway (futuras fases)
-			r.y += (scrollSpeed >= 0 ? scrollSpeed : scrollSpeed * 0.6) * dt + r.speed * dt;
+			// fase 2: curvas (sway)
+			const baseDown = (scrollSpeed >= 0) ? scrollSpeed : scrollSpeed * 0.6;
+			r.y += (baseDown + r.speed) * dt;
 			r.x += Math.sin((now + r.offset) / 600) * r.sway * dt;
 		}
 
-		if (r.y > H + 120) rivals.splice(i, 1);
-		else if (player && !player.crashed && rectOverlap(player, r)) {
+		// recycle if off bottom
+		if (r.y > H + 120) {
+			rivals.splice(i, 1);
+			continue;
+		}
+
+		// collision check with player using adjustable hitbox
+		if (player && !player.crashed && rectOverlap(player, r)) {
 			player.crashed = true;
 			showLoseOverlay();
 			return;
 		}
 	}
+
 	updateHUD();
 }
 
-// === Overlays ===
+// === Overlays: Win / Lose / Next-phase behavior ===
 function showWinOverlay(isEaster) {
 	gameRunning = false;
-	gameMusic.pause();
+	if (musicEnabled) gameMusic.pause();
 	soundVictory.currentTime = 0;
 	soundVictory.play();
+
+	// botão "Avançar" vai para a próxima fase (se houver)
+	let nextBtnHtml = '';
+	if (currentPhase === 1) {
+		nextBtnHtml = `<button id="btnNext" style="margin-top:20px;padding:10px 16px;font-family:'Press Start 2P';cursor:pointer;">Ir para Fase 2</button>`;
+	} else {
+		nextBtnHtml = `<button id="btnNext" style="margin-top:20px;padding:10px 16px;font-family:'Press Start 2P';cursor:pointer;">Revisitar Fase 1</button>`;
+	}
 
 	overlayDiv.innerHTML = `
 		<h1 style="color:${isEaster ? "#00ff99" : "#ffd166"};font-size:26px;">
@@ -333,20 +423,37 @@ function showWinOverlay(isEaster) {
 		</h1>
 		<p>${isEaster ? "Você segurou ré por 10s e descobriu o segredo!" : "Você alcançou a distância máxima!"}</p>
 		<p>Parabéns, ${playerName}!</p>
-		<button id="btnNext" style="margin-top:20px;padding:10px 16px;font-family:'Press Start 2P';cursor:pointer;">Avançar</button>
+		${nextBtnHtml}
 		<button id="btnRestart" style="margin-top:12px;padding:10px 16px;font-family:'Press Start 2P';cursor:pointer;">Jogar Novamente</button>
 	`;
 	overlayDiv.style.display = "flex";
-	document.getElementById("btnRestart").onclick = restartGame;
+
+	document.getElementById("btnRestart").onclick = () => {
+		// reinicia mesma fase
+		restartGame();
+	};
+
 	document.getElementById("btnNext").onclick = () => {
-		alert("🚧 Próxima etapa em construção!");
-		if (musicEnabled) gameMusic.play();
+		if (currentPhase === 1) {
+			// ir para fase 2
+			currentPhase = 2;
+			updatePhaseLabelInMenu();
+			overlayDiv.style.display = "none";
+			// mostra a intro da fase 2 e aguarda confirmação para iniciar
+			showPhaseIntro(2);
+		} else {
+			// volta pra fase 1
+			currentPhase = 1;
+			updatePhaseLabelInMenu();
+			overlayDiv.style.display = "none";
+			showPhaseIntro(1);
+		}
 	};
 }
 
 function showLoseOverlay(customMessage) {
 	gameRunning = false;
-	gameMusic.pause();
+	if (musicEnabled) gameMusic.pause();
 	soundCollision.currentTime = 0;
 	soundCollision.play();
 
@@ -356,7 +463,11 @@ function showLoseOverlay(customMessage) {
 		<button id="btnRetry" style="margin-top:20px;padding:10px 16px;font-family:'Press Start 2P';cursor:pointer;">Tentar Novamente</button>
 	`;
 	overlayDiv.style.display = "flex";
-	document.getElementById("btnRetry").onclick = restartGame;
+	document.getElementById("btnRetry").onclick = () => {
+		// reinicia a MESMA fase
+		overlayDiv.style.display = "none";
+		showPhaseIntro(currentPhase);
+	};
 }
 
 // === Misc ===
@@ -365,8 +476,15 @@ function spawnRival() {
 	const img = IMAGES.rivals[idx];
 	const w = Math.min(120, Math.floor(W * (0.10 + Math.random() * 0.02)));
 	const h = Math.min(170, Math.floor(H * (0.14 + Math.random() * 0.03)));
-	// distribuir nas faixas da pista (ainda central, mas pode ajustar)
-	const laneX = Math.floor(16 + Math.random() * (W - 32 - w));
+	// escolher posição X baseada em "faixas" (3 faixas) para mais previsibilidade
+	const lanes = [
+		Math.floor(W * 0.2 - w/2),
+		Math.floor(W * 0.5 - w/2),
+		Math.floor(W * 0.8 - w/2)
+	];
+	const laneIndex = Math.floor(Math.random() * lanes.length);
+	const laneX = lanes[laneIndex];
+
 	const r = {
 		img,
 		width: w,
@@ -374,15 +492,18 @@ function spawnRival() {
 		x: laneX,
 		y: -h - 20,
 		speed: 2 + Math.random() * 3.2,
-		// em PHASE=1 sway não será usado, mas mantemos para fases futuras
-		sway: (PHASE === 1) ? 0 : (8 + Math.random() * 12),
+		// sway só relevante para fase 2
+		sway: 8 + Math.random() * 12,
 		offset: Math.random() * 1000
 	};
 	rivals.push(r);
 }
 
 function render() {
+	// quando o jogo foi parado por overlay (win/lose), não redesenhar ciclo normal aqui.
+	// Mas quando estiver somente menu, showMenu será visível e canvas pode ficar com preview.
 	if (!gameRunning && (easterEggTriggered || normalWinTriggered)) return;
+
 	ctx.clearRect(0, 0, W, H);
 	if (IMAGES.track && IMAGES.track.complete && IMAGES.track.naturalWidth) {
 		const img = IMAGES.track;
@@ -393,10 +514,14 @@ function render() {
 		ctx.fillStyle = CONFIG.CANVAS_BG_COLOR;
 		ctx.fillRect(0, 0, W, H);
 	}
+
+	// pista mais larga (ajustável)
 	const roadW = Math.floor(W * 0.9);
 	const roadX = Math.floor((W - roadW) / 2);
 	ctx.fillStyle = "#202830";
 	ctx.fillRect(roadX, 0, roadW, H);
+
+	// center dashed lane
 	const laneXCenter = Math.floor(W / 2);
 	ctx.strokeStyle = "#f2f2f2";
 	ctx.lineWidth = 4;
@@ -408,13 +533,32 @@ function render() {
 		ctx.stroke();
 	}
 	ctx.setLineDash([]);
+
+	// draw rivals
 	for (const r of rivals) {
-		if (r.img && r.img.complete) ctx.drawImage(r.img, r.x, r.y, r.width, r.height);
-		else { ctx.fillStyle = "#b33"; ctx.fillRect(r.x, r.y, r.width, r.height); }
+		if (r.img && r.img.complete) ctx.drawImage(r.img, r.x, Math.floor(r.y), r.width, r.height);
+		else { ctx.fillStyle = "#b33"; ctx.fillRect(r.x, Math.floor(r.y), r.width, r.height); }
+
+		// optional small label (doesn't affect hitbox)
+		ctx.fillStyle = "#fff";
+		ctx.font = "12px monospace";
+		ctx.fillText("RIVAL", r.x + 6, Math.floor(r.y) + 14);
 	}
+
+	// draw player (on top)
 	if (player) {
 		if (player.img && player.img.complete) ctx.drawImage(player.img, player.x, player.y, player.width, player.height);
 		else { ctx.fillStyle = "#ff3b3b"; ctx.fillRect(player.x, player.y, player.width, player.height); }
+
+		// nome do jogador (apenas visual — hitbox não conta o texto)
+		ctx.fillStyle = "#fff";
+		ctx.font = "12px monospace";
+		ctx.fillText(playerName, player.x + 6, player.y + 14);
+
+		// debug: desenhar a hitbox atual (comentado por padrão — habilite se quiser)
+		// ctx.strokeStyle = "rgba(255,0,0,0.7)";
+		// ctx.strokeRect(player.x + CONFIG.HITBOX_OFFSET_X, player.y + CONFIG.HITBOX_OFFSET_Y,
+		//                player.width - CONFIG.HITBOX_OFFSET_X*2, player.height - CONFIG.HITBOX_OFFSET_Y*2);
 	}
 }
 
@@ -426,7 +570,7 @@ function updateHUD() {
 function randInterval() { return CONFIG.SPAWN_INTERVAL + Math.random() * CONFIG.SPAWN_VARIANCE; }
 function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
 
-// 🎯 colisão com hitbox ajustável
+// 🎯 colisão com hitbox ajustável (o nome desenhado NÃO conta, apenas a caixa ajustada)
 function rectOverlap(a, b) {
 	const ax1 = a.x + CONFIG.HITBOX_OFFSET_X;
 	const ay1 = a.y + CONFIG.HITBOX_OFFSET_Y;
