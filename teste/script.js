@@ -235,9 +235,9 @@ function startGame() {
 	if (playerName.toLowerCase() === "fiat uno") {
 		CONFIG.PLAYER_IMG = "uno.png";
 		IMAGES.player.src = CONFIG.PLAYER_IMG;
-		CONFIG.MAX_SCROLL = 100000000;
-		CONFIG.SCROLL_BASE = 20000;
-		CONFIG.SCROLL_ACCEL = 50000;
+		CONFIG.MAX_SCROLL = 50000;
+		CONFIG.SCROLL_BASE = 6;
+		CONFIG.SCROLL_ACCEL = 8;
 		fiatUnoActive = true;
 	} else if (playerName.toLowerCase() === "peugeot") {
 		CONFIG.PLAYER_IMG = "p206.png";
@@ -371,7 +371,7 @@ function update(dt) {
 	}
 
 	// distância e checks
-	if (scrollSpeed > 0 && !fiatUnoActive) {
+	if (scrollSpeed > 0) {
 		distance += Math.round(scrollSpeed * dt);
 
 		// === Peugeot: quebra após 1000m ===
