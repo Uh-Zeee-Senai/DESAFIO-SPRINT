@@ -1,7 +1,7 @@
 // === CONFIG ===
 const CONFIG = {
 	PLAYER_IMG: "carro1.png",
-	RIVAL_IMAGES: ["carro2.png","carro3.png","carro2.png"],
+	RIVAL_IMAGES: ["carro2.png", "carro3.png", "carro2.png"],
 	TRACK_BG: "pista.jpg",
 	CANVAS_BG_COLOR: "#071427",
 	PLAYER_SIDE_SPEED: 6,
@@ -12,7 +12,11 @@ const CONFIG = {
 	SPAWN_INTERVAL: 900,
 	SPAWN_VARIANCE: 800,
 	MAX_DISTANCE: 999999,
-	EASTER_EGG_TIME: 10000
+	EASTER_EGG_TIME: 10000,
+
+	// 🎯 Ajuste fácil da hitbox (nova melhoria)
+	HITBOX_OFFSET_X: 8,
+	HITBOX_OFFSET_Y: 15
 };
 
 // === Globals ===
@@ -109,24 +113,23 @@ function startGame() {
 
 	// 🔥 EASTER EGG: Fiat Uno
 	if (playerName.toLowerCase() === "fiat uno") {
-		CONFIG.PLAYER_IMG = "uno.png"; // troca imagem
+		CONFIG.PLAYER_IMG = "uno.png";
 		IMAGES.player.src = CONFIG.PLAYER_IMG;
-		CONFIG.MAX_SCROLL = 100000000; // velocidade absurda
-		CONFIG.SCROLL_BASE = 1; // aceleração inicial (ajustável)
-		CONFIG.SCROLL_ACCEL = 5; // acelera rápido
+		CONFIG.MAX_SCROLL = 100000000;
+		CONFIG.SCROLL_BASE = 1;
+		CONFIG.SCROLL_ACCEL = 5;
 		console.log("🔥 Fiat Uno detectado! Ative o modo Velozes e Furiosos!");
 	}
 	// 🚗 EASTER EGG: Peugeot 206
 	else if (playerName.toLowerCase() === "peugeot") {
 		CONFIG.PLAYER_IMG = "p206.png";
 		IMAGES.player.src = CONFIG.PLAYER_IMG;
-		CONFIG.MAX_SCROLL = 15; // mantém valores normais
+		CONFIG.MAX_SCROLL = 15;
 		CONFIG.SCROLL_BASE = 3.5;
 		CONFIG.SCROLL_ACCEL = 2.8;
 		console.log("🚗 Peugeot 206 detectado! Vamos ver até onde ele aguenta...");
 	}
 	else {
-		// resetar valores para não ficar bugado depois
 		CONFIG.MAX_SCROLL = 18;
 		CONFIG.SCROLL_BASE = 3.5;
 		CONFIG.SCROLL_ACCEL = 2.8;
@@ -167,7 +170,7 @@ function initRun() {
 		img: IMAGES.player,
 		width: Math.min(140, Math.floor(W * 0.12)),
 		height: Math.min(200, Math.floor(H * 0.18)),
-		x: Math.floor(W/2 - Math.min(140, Math.floor(W * 0.12))/2),
+		x: Math.floor(W / 2 - Math.min(140, Math.floor(W * 0.12)) / 2),
 		y: Math.floor(H - Math.min(200, Math.floor(H * 0.18)) - 24),
 		speedSide: CONFIG.PLAYER_SIDE_SPEED,
 		crashed: false
@@ -216,11 +219,9 @@ function update(dt) {
 		scrollSpeed = clamp(scrollSpeed, -CONFIG.MAX_SCROLL, CONFIG.MAX_SCROLL);
 	}
 
-	// distância e checks
 	if (scrollSpeed > 0 && !fiatUnoActive) {
 		distance += Math.round(scrollSpeed * dt);
 
-		// === Peugeot: quebra após 1000m ===
 		if (playerName.toLowerCase() === "peugeot" && distance >= 1000 && !player.crashed) {
 			player.crashed = true;
 			showLoseOverlay("💥 O Peugeot 206 quebrou após 1000m!");
@@ -246,7 +247,7 @@ function update(dt) {
 		const r = rivals[i];
 		r.y += (scrollSpeed >= 0 ? scrollSpeed : scrollSpeed * 0.6) * dt + r.speed * dt;
 		r.x += Math.sin((now + r.offset) / 600) * r.sway * dt;
-		if (r.y > H + 120) rivals.splice(i,1);
+		if (r.y > H + 120) rivals.splice(i, 1);
 		else if (player && !player.crashed && rectOverlap(player, r)) {
 			player.crashed = true;
 			showLoseOverlay();
@@ -257,16 +258,6 @@ function update(dt) {
 }
 
 // === Overlays ===
-function showUnoOverlay() {
-	overlayDiv.innerHTML = `
-		<h1 style="color:#00ff99;font-size:26px;">🔥 O UNO ESTÁ IMPOSSÍVEL! 🔥</h1>
-		<p>Velocidade: Infinita<br>Prepare-se para o caos absoluto!</p>
-		<button style="margin-top:20px;padding:10px 16px;font-family:'Press Start 2P';cursor:pointer;">COMEÇAR!</button>
-	`;
-	overlayDiv.style.display = "flex";
-	overlayDiv.querySelector("button").onclick = () => overlayDiv.style.display = "none";
-}
-
 function showWinOverlay(isEaster) {
 	gameRunning = false;
 	overlayDiv.innerHTML = `
@@ -283,7 +274,6 @@ function showWinOverlay(isEaster) {
 	document.getElementById("btnNext").onclick = () => alert("🚧 Próxima etapa em construção!");
 }
 
-// agora aceita mensagem customizada
 function showLoseOverlay(customMessage) {
 	gameRunning = false;
 	overlayDiv.innerHTML = `
@@ -299,8 +289,8 @@ function showLoseOverlay(customMessage) {
 function spawnRival() {
 	const idx = Math.floor(Math.random() * IMAGES.rivals.length);
 	const img = IMAGES.rivals[idx];
-	const w = Math.min(120, Math.floor(W * (0.10 + Math.random()*0.02)));
-	const h = Math.min(170, Math.floor(H * (0.14 + Math.random()*0.03)));
+	const w = Math.min(120, Math.floor(W * (0.10 + Math.random() * 0.02)));
+	const h = Math.min(170, Math.floor(H * (0.14 + Math.random() * 0.03)));
 	const laneX = Math.floor(16 + Math.random() * (W - 32 - w));
 	const r = { img, width: w, height: h, x: laneX, y: -h - 20, speed: 2 + Math.random() * 3.2, sway: 8 + Math.random() * 12, offset: Math.random() * 1000 };
 	rivals.push(r);
@@ -308,7 +298,7 @@ function spawnRival() {
 
 function render() {
 	if (!gameRunning && (easterEggTriggered || normalWinTriggered)) return;
-	ctx.clearRect(0,0,W,H);
+	ctx.clearRect(0, 0, W, H);
 	if (IMAGES.track && IMAGES.track.complete && IMAGES.track.naturalWidth) {
 		const img = IMAGES.track;
 		const t = Math.floor(distance % img.height);
@@ -316,20 +306,20 @@ function render() {
 		ctx.drawImage(img, 0, img.height - t, W, img.height);
 	} else {
 		ctx.fillStyle = CONFIG.CANVAS_BG_COLOR;
-		ctx.fillRect(0,0,W,H);
+		ctx.fillRect(0, 0, W, H);
 	}
-	const roadW = Math.floor(W * 0.68);
-	const roadX = Math.floor((W - roadW)/2);
+	const roadW = Math.floor(W * 0.9); // ⚙️ pista mais larga
+	const roadX = Math.floor((W - roadW) / 2);
 	ctx.fillStyle = "#202830";
 	ctx.fillRect(roadX, 0, roadW, H);
-	const laneXCenter = Math.floor(W/2);
+	const laneXCenter = Math.floor(W / 2);
 	ctx.strokeStyle = "#f2f2f2";
 	ctx.lineWidth = 4;
-	ctx.setLineDash([10,20]);
-	for (let y = -(distance % 40); y < H; y+=40) {
+	ctx.setLineDash([10, 20]);
+	for (let y = -(distance % 40); y < H; y += 40) {
 		ctx.beginPath();
 		ctx.moveTo(laneXCenter, y);
-		ctx.lineTo(laneXCenter, y+16);
+		ctx.lineTo(laneXCenter, y + 16);
 		ctx.stroke();
 	}
 	ctx.setLineDash([]);
@@ -349,8 +339,22 @@ function updateHUD() {
 }
 
 function randInterval() { return CONFIG.SPAWN_INTERVAL + Math.random() * CONFIG.SPAWN_VARIANCE; }
-function clamp(v,a,b) { return Math.max(a, Math.min(b, v)); }
-function rectOverlap(a,b) { return !(a.x + a.width < b.x || a.x > b.x + b.width || a.y + a.height < b.y || a.y > b.y + b.height); }
+function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+// 🎯 colisão com hitbox ajustável
+function rectOverlap(a, b) {
+	const ax1 = a.x + CONFIG.HITBOX_OFFSET_X;
+	const ay1 = a.y + CONFIG.HITBOX_OFFSET_Y;
+	const ax2 = a.x + a.width - CONFIG.HITBOX_OFFSET_X;
+	const ay2 = a.y + a.height - CONFIG.HITBOX_OFFSET_Y;
+
+	const bx1 = b.x;
+	const by1 = b.y;
+	const bx2 = b.x + b.width;
+	const by2 = b.y + b.height;
+
+	return !(ax2 < bx1 || ax1 > bx2 || ay2 < by1 || ay1 > by2);
+}
 
 function resize() {
 	W = window.innerWidth;
@@ -360,15 +364,15 @@ function resize() {
 	if (player) {
 		player.width = Math.min(140, Math.floor(W * 0.12));
 		player.height = Math.min(200, Math.floor(H * 0.18));
-		player.x = Math.floor(W/2 - player.width/2);
+		player.x = Math.floor(W / 2 - player.width / 2);
 		player.y = Math.floor(H - player.height - 24);
 	}
 }
 
 function drawMenuPreview() {
-	ctx.clearRect(0,0,canvas.width,canvas.height);
+	ctx.clearRect(0, 0, canvas.width, canvas.height);
 	ctx.fillStyle = "rgba(0,0,0,0.45)";
-	ctx.fillRect(0,0,canvas.width,canvas.height);
+	ctx.fillRect(0, 0, canvas.width, canvas.height);
 	ctx.fillStyle = "#fff";
 	ctx.font = "18px monospace";
 	ctx.fillText("Pressione Iniciar para começar a corrida (Desktop - Vista Aérea)", 24, 48);
