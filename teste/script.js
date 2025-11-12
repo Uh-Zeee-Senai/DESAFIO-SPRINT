@@ -108,29 +108,31 @@ function startGame() {
 	initRun();
 
 	// 🔥 EASTER EGG: Fiat Uno
-if (playerName.toLowerCase() === "fiat uno") {
-    CONFIG.PLAYER_IMG = "uno.png"; // troca imagem
-    IMAGES.player.src = CONFIG.PLAYER_IMG;
-    CONFIG.MAX_SCROLL = 100000000; // velocidade absurda
-    CONFIG.SCROLL_BASE = 1; // aceleração inicial enorme
-    CONFIG.SCROLL_ACCEL = 5; // acelera instantâneo
-    console.log("🔥 Fiat Uno detectado! Ative o modo Velozes e Furiosos!");
-} 
-else if (playerName.toLowerCase() === "peugeot") {
-    CONFIG.PLAYER_IMG = "p206.png";
-    IMAGES.player.src = CONFIG.PLAYER_IMG;
-    CONFIG.MAX_SCROLL = 15; // normal
-    CONFIG.SCROLL_BASE = 3.5;
-    CONFIG.SCROLL_ACCEL = 2.8;
-    console.log("🚗 Peugeot 206 detectado! Vamos ver até onde ele aguenta...");
-}
-else {
-    // resetar valores para não ficar bugado depois
-    CONFIG.MAX_SCROLL = 18;
-    CONFIG.SCROLL_BASE = 3.5;
-    CONFIG.SCROLL_ACCEL = 2.8;
-}
-
+	if (playerName.toLowerCase() === "fiat uno") {
+		CONFIG.PLAYER_IMG = "uno.png"; // troca imagem
+		IMAGES.player.src = CONFIG.PLAYER_IMG;
+		CONFIG.MAX_SCROLL = 100000000; // velocidade absurda
+		CONFIG.SCROLL_BASE = 1; // aceleração inicial (ajustável)
+		CONFIG.SCROLL_ACCEL = 5; // acelera rápido
+		console.log("🔥 Fiat Uno detectado! Ative o modo Velozes e Furiosos!");
+	}
+	// 🚗 EASTER EGG: Peugeot 206
+	else if (playerName.toLowerCase() === "peugeot") {
+		CONFIG.PLAYER_IMG = "p206.png";
+		IMAGES.player.src = CONFIG.PLAYER_IMG;
+		CONFIG.MAX_SCROLL = 15; // mantém valores normais
+		CONFIG.SCROLL_BASE = 3.5;
+		CONFIG.SCROLL_ACCEL = 2.8;
+		console.log("🚗 Peugeot 206 detectado! Vamos ver até onde ele aguenta...");
+	}
+	else {
+		// resetar valores para não ficar bugado depois
+		CONFIG.MAX_SCROLL = 18;
+		CONFIG.SCROLL_BASE = 3.5;
+		CONFIG.SCROLL_ACCEL = 2.8;
+		CONFIG.PLAYER_IMG = "carro1.png";
+		IMAGES.player.src = CONFIG.PLAYER_IMG;
+	}
 
 	gameRunning = true;
 	lastTime = performance.now();
@@ -214,13 +216,24 @@ function update(dt) {
 		scrollSpeed = clamp(scrollSpeed, -CONFIG.MAX_SCROLL, CONFIG.MAX_SCROLL);
 	}
 
+	// distância e checks
 	if (scrollSpeed > 0 && !fiatUnoActive) {
 		distance += Math.round(scrollSpeed * dt);
+
+		// === Peugeot: quebra após 1000m ===
+		if (playerName.toLowerCase() === "peugeot" && distance >= 1000 && !player.crashed) {
+			player.crashed = true;
+			showLoseOverlay("💥 O Peugeot 206 quebrou após 1000m!");
+			return;
+		}
+
 		if (distance >= CONFIG.MAX_DISTANCE && !normalWinTriggered) {
 			normalWinTriggered = true;
 			showWinOverlay(false);
 			return;
 		}
+	} else if (scrollSpeed < 0) {
+		distance = Math.max(0, distance + Math.round(scrollSpeed * dt));
 	}
 
 	const now = performance.now();
@@ -270,11 +283,12 @@ function showWinOverlay(isEaster) {
 	document.getElementById("btnNext").onclick = () => alert("🚧 Próxima etapa em construção!");
 }
 
-function showLoseOverlay() {
+// agora aceita mensagem customizada
+function showLoseOverlay(customMessage) {
 	gameRunning = false;
 	overlayDiv.innerHTML = `
-		<h1 style="color:#ff4444;font-size:26px;">💥 COLISÃO! 💥</h1>
-		<p>${playerName}, você bateu após ${distance}m.</p>
+		<h1 style="color:#ff4444;font-size:26px;">${customMessage ? customMessage : "💥 COLISÃO! 💥"}</h1>
+		<p>${playerName}, você parou após ${distance}m.</p>
 		<button id="btnRetry" style="margin-top:20px;padding:10px 16px;font-family:'Press Start 2P';cursor:pointer;">Tentar Novamente</button>
 	`;
 	overlayDiv.style.display = "flex";
@@ -359,4 +373,3 @@ function drawMenuPreview() {
 	ctx.font = "18px monospace";
 	ctx.fillText("Pressione Iniciar para começar a corrida (Desktop - Vista Aérea)", 24, 48);
 }
-	
