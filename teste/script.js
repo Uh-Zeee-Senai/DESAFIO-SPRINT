@@ -19,6 +19,9 @@ const CONFIG = {
 	HITBOX_OFFSET_Y: 15
 };
 
+// === PHASE (mude aqui para trocar fase) ===
+const PHASE = 1; // 1 = fase inicial (rivals descem reto). Futuro: 2 = curvas em C, etc.
+
 // === Globals ===
 let canvas, ctx, W, H;
 let menu, startBtn, restartBtn, playerNameInput, debugDiv;
@@ -295,8 +298,18 @@ function update(dt) {
 
 	for (let i = rivals.length - 1; i >= 0; i--) {
 		const r = rivals[i];
-		r.y += (scrollSpeed >= 0 ? scrollSpeed : scrollSpeed * 0.6) * dt + r.speed * dt;
-		r.x += Math.sin((now + r.offset) / 600) * r.sway * dt;
+
+		// === Fase 1: rivais descem reto (sem sway) ===
+		if (PHASE === 1) {
+			// vertical movement only
+			r.y += (scrollSpeed >= 0 ? scrollSpeed : scrollSpeed * 0.6) * dt + r.speed * dt;
+			// mantém r.x estável (linha reta)
+		} else {
+			// comportamento original com sway (futuras fases)
+			r.y += (scrollSpeed >= 0 ? scrollSpeed : scrollSpeed * 0.6) * dt + r.speed * dt;
+			r.x += Math.sin((now + r.offset) / 600) * r.sway * dt;
+		}
+
 		if (r.y > H + 120) rivals.splice(i, 1);
 		else if (player && !player.crashed && rectOverlap(player, r)) {
 			player.crashed = true;
@@ -352,8 +365,19 @@ function spawnRival() {
 	const img = IMAGES.rivals[idx];
 	const w = Math.min(120, Math.floor(W * (0.10 + Math.random() * 0.02)));
 	const h = Math.min(170, Math.floor(H * (0.14 + Math.random() * 0.03)));
+	// distribuir nas faixas da pista (ainda central, mas pode ajustar)
 	const laneX = Math.floor(16 + Math.random() * (W - 32 - w));
-	const r = { img, width: w, height: h, x: laneX, y: -h - 20, speed: 2 + Math.random() * 3.2, sway: 8 + Math.random() * 12, offset: Math.random() * 1000 };
+	const r = {
+		img,
+		width: w,
+		height: h,
+		x: laneX,
+		y: -h - 20,
+		speed: 2 + Math.random() * 3.2,
+		// em PHASE=1 sway não será usado, mas mantemos para fases futuras
+		sway: (PHASE === 1) ? 0 : (8 + Math.random() * 12),
+		offset: Math.random() * 1000
+	};
 	rivals.push(r);
 }
 
