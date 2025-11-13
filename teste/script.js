@@ -39,14 +39,9 @@ let fiatUnoActive = false;
 let musicEnabled = false;
 
 // === Phase control ===
-let currentPhase = 1; // 1 = fase reta (mais fácil). 2 = fase com C / sway. 3 = final
+let currentPhase = 1; // 1 = reta, 2 = curvas, 3 = final (desbloqueada após vencer 2)
 let phaseIntroShowing = false;
-let phase3Unlocked = false; // só true depois de vencer fase 2
-
-// === Final phase (ally) state ===
-let finalAllySpawned = false;
-let ally = null;
-let finalDuoActive = false;
+let phase3Unlocked = false;
 
 // === Audio ===
 const gameMusic = new Audio("musicgame.mp3");
@@ -60,6 +55,7 @@ soundCollision.volume = 0.8;
 const soundVictory = new Audio("victory.mp3");
 soundVictory.volume = 0.9;
 
+// fase 3 specific audio
 const seeyou = new Audio("seeyouagain.mp3");
 seeyou.volume = 0.9;
 
@@ -71,20 +67,24 @@ const IMAGES = {
 	player: new Image(),
 	rivals: [],
 	track: new Image(),
-	toretto: new Image(),
-	skyline: new Image()
+	toretto: new Image(), // fase 3 car
+	brian: new Image()    // brian car
 };
-
 IMAGES.player.src = CONFIG.PLAYER_IMG;
-IMAGES.toretto.src = "toretto.png"; // imagem do Toretto (fase final)
-IMAGES.skyline.src = "skyline.png"; // imagem do Brian (ally)
-
 for (let i = 0; i < CONFIG.RIVAL_IMAGES.length; i++) {
 	const im = new Image();
 	im.src = CONFIG.RIVAL_IMAGES[i];
 	IMAGES.rivals.push(im);
 }
 IMAGES.track.src = CONFIG.TRACK_BG;
+IMAGES.toretto.src = "toretto.png";
+IMAGES.brian.src = "brian.png";
+
+// === Phase3 runtime vars ===
+let inPhase3Sequence = false;
+let brianActive = false;
+let brianCar = null;
+let phase3Timers = []; // store timeouts to clear on restart
 
 // === DOM READY ===
 window.addEventListener("DOMContentLoaded", () => {
@@ -171,8 +171,7 @@ function createPhaseSelector() {
 	Object.assign(faseContainer.style, {
 		marginTop: "12px",
 		fontFamily: "'Press Start 2P', monospace",
-		fontSize: "12px",
-		textAlign: "center"
+		fontSize: "12px"
 	});
 	faseContainer.innerHTML = `
 		<label style="display:block;margin-bottom:8px;">Escolha a fase:</label>
@@ -184,26 +183,15 @@ function createPhaseSelector() {
 	`;
 	menu.appendChild(faseContainer);
 
-	document.getElementById("fase1Btn").onclick = () => {
-		currentPhase = 1;
-		updatePhaseLabelInMenu();
-	};
-	document.getElementById("fase2Btn").onclick = () => {
-		currentPhase = 2;
-		updatePhaseLabelInMenu();
-	};
+	document.getElementById("fase1Btn").onclick = () => { currentPhase = 1; updatePhaseLabelInMenu(); };
+	document.getElementById("fase2Btn").onclick = () => { currentPhase = 2; updatePhaseLabelInMenu(); };
 	document.getElementById("fase3Btn").onclick = () => {
-		// só permite se desbloqueado
-		if (!phase3Unlocked) {
-			// feedback visual rápido
-			const btn = document.getElementById("fase3Btn");
-			const old = btn.textContent;
-			btn.textContent = "Travada (vença Fase 2)";
-			setTimeout(()=> btn.textContent = old, 1200);
-			return;
+		if (phase3Unlocked) {
+			currentPhase = 3;
+			updatePhaseLabelInMenu();
+		} else {
+			alert("Fase 3 só é liberada após zerar a Fase 2.");
 		}
-		currentPhase = 3;
-		updatePhaseLabelInMenu();
 	};
 }
 
@@ -219,21 +207,9 @@ function updatePhaseLabelInMenu() {
 		lbl.style.opacity = "0.95";
 		menu.appendChild(lbl);
 	}
-	let status = currentPhase === 1 ? "(Reta - Fácil)" : (currentPhase === 2 ? "(Curvas em C - Difícil)" : "(Final - Boss)");
-	if (currentPhase === 3 && !phase3Unlocked) status += " — (travada)";
-	lbl.textContent = `Fase atual: ${currentPhase} ${status}`;
-
-	// atualizar botão visual do selector
-	const btn3 = document.getElementById("fase3Btn");
-	if (btn3) {
-		if (phase3Unlocked) {
-			btn3.disabled = false;
-			btn3.style.opacity = "1";
-		} else {
-			btn3.disabled = false; // permitir clique pra mensagem; não bloquear DOM events
-			btn3.style.opacity = "0.5";
-		}
-	}
+	let extra = currentPhase === 1 ? "(Reta - Fácil)" : (currentPhase === 2 ? "(Curvas em C - Difícil)" : "(Final - Cinemático)");
+	if (currentPhase === 3 && !phase3Unlocked) extra += " — BLOQUEADA";
+	lbl.textContent = `Fase atual: ${currentPhase} ${extra}`;
 }
 
 // === Overlays ===
@@ -269,30 +245,18 @@ function startGame() {
 	resetState();
 	initRun();
 
-	// ajustar configs por fase
-	if (currentPhase === 1) {
-		// valores padrões já ok
-		CONFIG.SPAWN_INTERVAL = 900;
-		CONFIG.SPAWN_VARIANCE = 800;
-	} else if (currentPhase === 2) {
-		// fase 2 mais intensa
-		CONFIG.SPAWN_INTERVAL = 700;
-		CONFIG.SPAWN_VARIANCE = 600;
-	} else if (currentPhase === 3) {
-		// Fase final: Toretto como jogador; rivais mais rápidos
-		CONFIG.SPAWN_INTERVAL = 600;
-		CONFIG.SPAWN_VARIANCE = 500;
-		// trocar imagem do player para Toretto
-		CONFIG.PLAYER_IMG = "toretto.png";
-		IMAGES.player.src = CONFIG.PLAYER_IMG;
-	}
+	// phase 3 sequence flags cleared
+	inPhase3Sequence = false;
+	brianActive = false;
+	phase3Timers.forEach(t => clearTimeout(t));
+	phase3Timers = [];
 
 	if (musicEnabled) {
 		gameMusic.currentTime = 0;
 		gameMusic.play().catch(()=>{});
 	}
 
-	// 🔥 EASTER EGG: Fiat Uno (mantive compatibilidade)
+	// 🔥 EASTER EGG: Fiat Uno
 	if (playerName.toLowerCase() === "fiat uno") {
 		CONFIG.PLAYER_IMG = "uno.png";
 		IMAGES.player.src = CONFIG.PLAYER_IMG;
@@ -308,14 +272,11 @@ function startGame() {
 		CONFIG.SCROLL_ACCEL = 2.8;
 		fiatUnoActive = false;
 	} else {
-		// resetar padrão se não for special
 		CONFIG.MAX_SCROLL = 18;
 		CONFIG.SCROLL_BASE = 3.5;
 		CONFIG.SCROLL_ACCEL = 2.8;
-		if (currentPhase !== 3) {
-			CONFIG.PLAYER_IMG = "carro1.png";
-			IMAGES.player.src = CONFIG.PLAYER_IMG;
-		}
+		CONFIG.PLAYER_IMG = "carro1.png";
+		IMAGES.player.src = CONFIG.PLAYER_IMG;
 		fiatUnoActive = false;
 	}
 
@@ -346,24 +307,23 @@ function resetState() {
 	easterEggTriggered = false;
 	normalWinTriggered = false;
 	fiatUnoActive = false;
-	finalAllySpawned = false;
-	ally = null;
-	finalDuoActive = false;
+	inPhase3Sequence = false;
+	brianActive = false;
+	phase3Timers.forEach(t => clearTimeout(t));
+	phase3Timers = [];
 	if (debugDiv) debugDiv.textContent = "";
 }
 
 // === Phase intro screen ===
 function showPhaseIntro(phaseNumber) {
 	phaseIntroShowing = true;
-	let desc = "";
-	if (phaseNumber === 1) desc = "Pista reta — carros seguem em linha reta. Fácil.";
-	else if (phaseNumber === 2) desc = "Pista com curvas em 'C' — cuidado com o desvio (mais difícil).";
-	else desc = "Fase Final — prepare-se para o duelo. Derrote a Fase 2 para desbloquear.";
-
+	let lockedText = "";
+	if (phaseNumber === 3 && !phase3Unlocked) lockedText = "<p style='color:#f55;margin-top:8px;'>Fase 3 bloqueada — vença a Fase 2 para liberar.</p>";
 	overlayDiv.innerHTML = `
 		<h1 style="font-size:22px;">Fase ${phaseNumber}</h1>
-		<p style="margin-top:8px;">${desc}</p>
-		<p style="margin-top:6px;">Controles: ← → mover | ↑ acelerar | ↓ frear/ré (segure 10s para Easter Egg)</p>
+		<p style="margin-top:8px;">${phaseNumber === 1 ? "Pista reta — carros seguem em linha reta. Fácil." : (phaseNumber === 2 ? "Pista com curvas em 'C' — cuidado com o desvio (mais difícil)." : "Fase Final — sequência cinematográfica; sobreviva até o final!")}</p>
+		<p style="margin-top:6px;">Controles: ← → mover | ↑ acelerar | ↓ frear/ré</p>
+		${lockedText}
 		<div style="margin-top:18px;">
 			<button id="btnStartPhase" style="padding:10px 16px;margin-right:10px;cursor:pointer;font-family:'Press Start 2P'">Começar Fase ${phaseNumber}</button>
 			<button id="btnBackMenu" style="padding:10px 16px;cursor:pointer;font-family:'Press Start 2P'">Voltar ao Menu</button>
@@ -372,8 +332,14 @@ function showPhaseIntro(phaseNumber) {
 	overlayDiv.style.display = "flex";
 
 	document.getElementById("btnStartPhase").onclick = () => {
+		if (phaseNumber === 3 && !phase3Unlocked) {
+			alert("Fase 3 ainda bloqueada. Zere a Fase 2 primeiro.");
+			return;
+		}
 		overlayDiv.style.display = "none";
 		phaseIntroShowing = false;
+		currentPhase = phaseNumber;
+		updatePhaseLabelInMenu();
 		startGame();
 	};
 	document.getElementById("btnBackMenu").onclick = () => {
@@ -414,8 +380,7 @@ function loop(ts) {
 
 // === Update ===
 function update(dt) {
-	// player movement
-	if (player && !player.crashed && !finalDuoActive) {
+	if (player && !player.crashed) {
 		if (keys["ArrowLeft"] || keys["a"]) player.x -= Math.round(player.speedSide * dt);
 		if (keys["ArrowRight"] || keys["d"]) player.x += Math.round(player.speedSide * dt);
 		player.x = clamp(player.x, 8, W - player.width - 8);
@@ -443,33 +408,57 @@ function update(dt) {
 		scrollSpeed = clamp(scrollSpeed, -CONFIG.MAX_SCROLL, CONFIG.MAX_SCROLL);
 	}
 
-	// distance updates (freeze if final duo active)
-	if (!finalDuoActive) {
-		if (scrollSpeed > 0) {
-			distance += Math.round(scrollSpeed * dt);
+	// distância e checks
+	if (scrollSpeed > 0) {
+		distance += Math.round(scrollSpeed * dt);
 
-			// === Peugeot: quebra após 1000m (compat) ===
-			if (playerName.toLowerCase() === "peugeot" && distance >= 1000 && !player.crashed) {
-				player.crashed = true;
-				showLoseOverlay("💥 O Peugeot 206 quebrou após 1000m!");
-				return;
-			}
-
-			if (distance >= CONFIG.MAX_DISTANCE && !normalWinTriggered) {
-				normalWinTriggered = true;
-				showWinOverlay(false);
-				return;
-			}
-		} else if (scrollSpeed < 0) {
-			distance = Math.max(0, distance + Math.round(scrollSpeed * dt));
+		// === Peugeot: quebra após 1000m ===
+		if (playerName.toLowerCase() === "peugeot" && distance >= 1000 && !player.crashed) {
+			player.crashed = true;
+			showLoseOverlay("💥 O Peugeot 206 quebrou após 1000m!");
+			return;
 		}
+
+		// special final-phase triggers:
+		if (currentPhase === 3) {
+			// spawn rivals until 4999 (i.e., when distance < 5000)
+			if (!inPhase3Sequence && distance >= 5000) {
+				// trigger cinematic sequence
+				startPhase3Sequence();
+			}
+		}
+
+		if (distance >= CONFIG.MAX_DISTANCE && !normalWinTriggered) {
+			normalWinTriggered = true;
+			showWinOverlay(false);
+			return;
+		}
+	} else if (scrollSpeed < 0) {
+		distance = Math.max(0, distance + Math.round(scrollSpeed * dt));
 	}
 
-	// spawn rivals only if NOT finalDuoActive and not in phase3 ally condition
+	// spawn rivals (phase-specific behavior)
 	const now = performance.now();
-	if (!finalDuoActive && now >= spawnTimer) {
-		spawnRival();
-		spawnTimer = now + randInterval();
+	if (now >= spawnTimer) {
+		// phase 3: only spawn while distance < 5000 and NOT in sequence
+		if (currentPhase === 3) {
+			if (!inPhase3Sequence && distance < 5000) {
+				spawnRivalPhase3();
+				// more difficult: reduce interval (40% faster)
+				spawnTimer = now + Math.max(200, randInterval() * 0.6);
+			} else {
+				// don't spawn after sequence started
+				spawnTimer = now + 1000;
+			}
+		} else if (currentPhase === 2) {
+			// phase2: a little harder than phase1
+			spawnRival();
+			spawnTimer = now + Math.max(200, randInterval() * 0.85);
+		} else {
+			// phase1
+			spawnRival();
+			spawnTimer = now + randInterval();
+		}
 	}
 
 	// update rivals positions
@@ -479,12 +468,14 @@ function update(dt) {
 			// fase 1: carros seguem reto (sem sway)
 			r.y += (scrollSpeed >= 0 ? scrollSpeed : scrollSpeed * 0.6) * dt + r.speed * dt;
 		} else {
-			// fase 2 or 3 (before ally) : curvas (sway)
+			// fase 2 & phase3 pre-sequence: curvas (sway)
 			const baseDown = (scrollSpeed >= 0) ? scrollSpeed : scrollSpeed * 0.6;
 			r.y += (baseDown + r.speed) * dt;
+			// phase3 pre-sequence still uses sway
 			r.x += Math.sin((now + r.offset) / 600) * r.sway * dt;
 		}
 
+		// recycle if off bottom
 		if (r.y > H + 120) {
 			rivals.splice(i, 1);
 			continue;
@@ -498,60 +489,125 @@ function update(dt) {
 		}
 	}
 
-	// FINAL PHASE: spawn ally at 5000m and change behavior
-	if (currentPhase === 3 && !finalAllySpawned && distance >= 5000) {
-		finalAllySpawned = true;
-		// clear rivals and stop spawning
-		rivals = [];
-		finalDuoActive = true;
-		ally = {
-			img: IMAGES.skyline,
-			width: Math.min(140, Math.floor(W * 0.12)),
-			height: Math.min(200, Math.floor(H * 0.18)),
-			x: Math.floor(player.x + player.width + 8),
-			y: player.y
-		};
-		// pause normal background movement
-		scrollSpeed = 0;
-		// stop game music and play "see you again"
-		try { gameMusic.pause(); } catch(e){}
-		try { seeyou.currentTime = 0; seeyou.play(); } catch(e){}
-	}
-
-	// sync ally with player if in final duo
-	if (finalDuoActive && ally) {
-		// keep ally to the right of player (or to preferred side)
-		const targetX = player.x + player.width + 8;
-		// lerp to be smooth
-		ally.x += (targetX - ally.x) * 0.25;
-		ally.y = player.y;
-		// collisions/obstacles already stopped
+	// if Brian is active, sync him to player's movement
+	if (brianActive && brianCar) {
+		// keep brian to the right side of player (or left if no space)
+		const sideOffset = Math.min(140, player.width + 12);
+		const targetX = (player.x + player.width + sideOffset < W - 8) ? (player.x + player.width + 12) : Math.max(8, player.x - player.width - 12);
+		// smooth follow
+		brianCar.x += (targetX - brianCar.x) * 0.35;
+		brianCar.y = player.y; // same vertical position
 	}
 
 	updateHUD();
 }
 
+// === Phase 3 cinematic sequence starter ===
+function startPhase3Sequence() {
+	if (inPhase3Sequence) return;
+	inPhase3Sequence = true;
+
+	// 1) stop spawning rivals and freeze existing rivals from descending (they can drift off-screen)
+	// We'll stop adding new rivals and also gradually clear rivals by not updating their y (set speed to 0)
+	for (const r of rivals) {
+		// reduce speed so they stop descending (but keep them visible)
+		r.speed = 0;
+	}
+
+	// 2) swap player image to Toretto immediately
+	IMAGES.player.src = "toretto.png";
+	// optional: adjust player size slightly for the new sprite (keep proportions)
+	player.img = IMAGES.player;
+
+	// 3) stop the normal music and immediately play See You Again
+	if (musicEnabled) {
+		try { gameMusic.pause(); } catch (e) {}
+	}
+	try { seeyou.currentTime = 0; seeyou.play(); } catch (e) {}
+
+	// 4) after 5 seconds, Brian "desce" and appears to the side and synchronizes
+	const t1 = setTimeout(() => {
+		brianActive = true;
+		// create brianCar object
+		brianCar = {
+			img: IMAGES.brian,
+			width: Math.min(140, Math.floor(W * 0.12)),
+			height: Math.min(200, Math.floor(H * 0.18)),
+			// start off-screen above and then settle aside of player
+			x: player.x + player.width + 60,
+			y: player.y - 40
+		};
+		// small arrival animation: slide down to player's y
+		const arriveAnim = setInterval(() => {
+			brianCar.y += 6;
+			if (brianCar.y >= player.y) {
+				brianCar.y = player.y;
+				clearInterval(arriveAnim);
+			}
+		}, 16);
+	}, 5000);
+	phase3Timers.push(t1);
+
+	// 5) after +20 seconds from Brian's arrival (i.e., ~25s from 5000), end game with final completion
+	const t2 = setTimeout(() => {
+		// mark phase3 as completed and unlock any future logic
+		phase3Unlocked = true;
+		// stop See You Again and show final "zerou o jogo"
+		try { seeyou.pause(); seeyou.currentTime = 0; } catch (e) {}
+		showFinalCompletion();
+	}, 5000 + 20000);
+	phase3Timers.push(t2);
+}
+
+// === Final completion overlay (end of game) ===
+function showFinalCompletion() {
+	gameRunning = false;
+	inPhase3Sequence = false;
+	brianActive = false;
+	brianCar = null;
+
+	const msg = `
+		<h1 style="color:#ffd166;font-size:26px;">🏁 PARABÉNS — JOGO ZERADO! 🏁</h1>
+		<p>Você completou a corrida final ao lado do Brian.</p>
+		<p>Obrigado por jogar!</p>
+		<div style="margin-top:16px;">
+			<button id="btnBackToMenu" style="padding:10px 16px;font-family:'Press Start 2P';cursor:pointer;margin-right:8px;">Voltar ao Menu</button>
+			<button id="btnReplayAll" style="padding:10px 16px;font-family:'Press Start 2P';cursor:pointer;">Jogar Novamente (Fase 1)</button>
+		</div>
+	`;
+	overlayDiv.innerHTML = msg;
+	overlayDiv.style.display = "flex";
+
+	document.getElementById("btnBackToMenu").onclick = () => {
+		overlayDiv.style.display = "none";
+		restartGame();
+	};
+	document.getElementById("btnReplayAll").onclick = () => {
+		overlayDiv.style.display = "none";
+		currentPhase = 1;
+		updatePhaseLabelInMenu();
+		showPhaseIntro(1);
+	};
+}
+
 // === Overlays: Win / Lose / Next-phase behavior ===
 function showWinOverlay(isEaster) {
 	gameRunning = false;
-	if (musicEnabled) try { gameMusic.pause(); } catch(e){}
+	if (musicEnabled) gameMusic.pause();
 	try { soundVictory.currentTime = 0; soundVictory.play(); } catch(e){}
 
-	// If the player finished phase 2, unlock phase 3
+	// if player won phase 2, unlock phase 3
 	if (currentPhase === 2) {
 		phase3Unlocked = true;
-		// update button appearance
-		updatePhaseLabelInMenu();
 	}
 
-	// botão "Avançar" vai para a próxima fase (se houver)
 	let nextBtnHtml = '';
 	if (currentPhase === 1) {
 		nextBtnHtml = `<button id="btnNext" style="margin-top:20px;padding:10px 16px;font-family:'Press Start 2P';cursor:pointer;">Ir para Fase 2</button>`;
 	} else if (currentPhase === 2) {
 		nextBtnHtml = `<button id="btnNext" style="margin-top:20px;padding:10px 16px;font-family:'Press Start 2P';cursor:pointer;">Ir para Fase 3</button>`;
 	} else {
-		nextBtnHtml = `<button id="btnNext" style="margin-top:20px;padding:10px 16px;font-family:'Press Start 2P';cursor:pointer;">Revisitar Fase 1</button>`;
+		nextBtnHtml = `<button id="btnNext" style="margin-top:20px;padding:10px 16px;font-family:'Press Start 2P';cursor:pointer;">Jogar Novamente</button>`;
 	}
 
 	overlayDiv.innerHTML = `
@@ -567,14 +623,14 @@ function showWinOverlay(isEaster) {
 	overlayDiv.style.display = "flex";
 
 	document.getElementById("btnRestart").onclick = () => {
-		// reinicia a mesma fase (volta ao intro para confirmação)
+		// reinicia mesma fase via intro
 		overlayDiv.style.display = "none";
 		showPhaseIntro(currentPhase);
 	};
 
 	document.getElementById("btnMenu").onclick = () => {
 		overlayDiv.style.display = "none";
-		restartGame(); // leva ao menu (mantém fase selecionada)
+		restartGame();
 	};
 
 	document.getElementById("btnNext").onclick = () => {
@@ -584,13 +640,16 @@ function showWinOverlay(isEaster) {
 			overlayDiv.style.display = "none";
 			showPhaseIntro(2);
 		} else if (currentPhase === 2) {
-			// só vai pra 3 se desbloqueado (já desbloqueado aqui)
+			if (!phase3Unlocked) {
+				// allow going to 3 immediately (we also unlocked above when winning 2)
+				phase3Unlocked = true;
+			}
 			currentPhase = 3;
 			updatePhaseLabelInMenu();
 			overlayDiv.style.display = "none";
 			showPhaseIntro(3);
 		} else {
-			// volta pra fase 1
+			// from phase 3 just replay phase1
 			currentPhase = 1;
 			updatePhaseLabelInMenu();
 			overlayDiv.style.display = "none";
@@ -601,7 +660,7 @@ function showWinOverlay(isEaster) {
 
 function showLoseOverlay(customMessage) {
 	gameRunning = false;
-	if (musicEnabled) try { gameMusic.pause(); } catch(e){}
+	if (musicEnabled) gameMusic.pause();
 	try { soundCollision.currentTime = 0; soundCollision.play(); } catch(e){}
 
 	overlayDiv.innerHTML = `
@@ -645,15 +704,44 @@ function spawnRival() {
 		x: laneX,
 		y: -h - 20,
 		speed: 2 + Math.random() * 3.2,
-		// sway só relevante para fases curvas
+		// sway só relevante para fase 2
 		sway: 8 + Math.random() * 12,
 		offset: Math.random() * 1000
 	};
 	rivals.push(r);
 }
 
+// phase3 spawn uses faster, stronger rivals
+function spawnRivalPhase3() {
+	const idx = Math.floor(Math.random() * IMAGES.rivals.length);
+	const img = IMAGES.rivals[idx];
+	const w = Math.min(130, Math.floor(W * (0.11 + Math.random() * 0.03)));
+	const h = Math.min(180, Math.floor(H * (0.15 + Math.random() * 0.04)));
+	const lanes = [
+		Math.floor(W * 0.18 - w/2),
+		Math.floor(W * 0.45 - w/2),
+		Math.floor(W * 0.72 - w/2),
+		Math.floor(W * 0.9 - w/2)
+	];
+	const laneIndex = Math.floor(Math.random() * lanes.length);
+	const laneX = lanes[laneIndex];
+
+	const r = {
+		img,
+		width: w,
+		height: h,
+		x: laneX,
+		y: -h - 20,
+		// stronger rivals: higher base speed
+		speed: 4 + Math.random() * 4.5,
+		sway: 10 + Math.random() * 18,
+		offset: Math.random() * 1000
+	};
+	rivals.push(r);
+}
+
 function render() {
-	// se jogo não está rodando por overlay, evita redesenhar 'jogo' normal
+	// se jogo não está rodando por overlay, evita redesenhar ciclo normal aqui.
 	if (!gameRunning && (easterEggTriggered || normalWinTriggered)) return;
 
 	ctx.clearRect(0, 0, W, H);
@@ -688,17 +776,19 @@ function render() {
 
 	// draw rivals
 	for (const r of rivals) {
-		if (r.img && r.img.complete) ctx.drawImage(r.img, r.x, Math.floor(r.y), r.width, r.height);
-		else { ctx.fillStyle = "#b33"; ctx.fillRect(r.x, Math.floor(r.y), r.width, r.height); }
+		const ry = Math.floor(r.y);
+		if (r.img && r.img.complete) ctx.drawImage(r.img, r.x, ry, r.width, r.height);
+		else { ctx.fillStyle = "#b33"; ctx.fillRect(r.x, ry, r.width, r.height); }
 
 		// optional small label (visual only)
 		ctx.fillStyle = "#fff";
 		ctx.font = "12px monospace";
-		ctx.fillText("RIVAL", r.x + 6, Math.floor(r.y) + 14);
+		ctx.fillText("RIVAL", r.x + 6, ry + 14);
 	}
 
 	// draw player (on top)
 	if (player) {
+		// ensure player.img assigned (sometimes IMAGES.player was updated)
 		if (player.img && player.img.complete) ctx.drawImage(player.img, player.x, player.y, player.width, player.height);
 		else { ctx.fillStyle = "#ff3b3b"; ctx.fillRect(player.x, player.y, player.width, player.height); }
 
@@ -708,14 +798,10 @@ function render() {
 		ctx.fillText(playerName, player.x + 6, player.y + 14);
 	}
 
-	// draw ally if present (fase 3)
-	if (ally && finalDuoActive) {
-		if (ally.img && ally.img.complete) ctx.drawImage(ally.img, Math.floor(ally.x), Math.floor(ally.y), ally.width, ally.height);
-		else { ctx.fillStyle = "#66f"; ctx.fillRect(Math.floor(ally.x), Math.floor(ally.y), ally.width, ally.height); }
-		// small label
-		ctx.fillStyle = "#fff";
-		ctx.font = "12px monospace";
-		ctx.fillText("BRIAN", Math.floor(ally.x) + 6, Math.floor(ally.y) + 14);
+	// draw brian car if active
+	if (brianActive && brianCar) {
+		if (IMAGES.brian && IMAGES.brian.complete) ctx.drawImage(IMAGES.brian, Math.floor(brianCar.x), Math.floor(brianCar.y), brianCar.width, brianCar.height);
+		else { ctx.fillStyle = "#3399ff"; ctx.fillRect(Math.floor(brianCar.x), Math.floor(brianCar.y), brianCar.width, brianCar.height); }
 	}
 }
 
@@ -752,6 +838,11 @@ function resize() {
 		player.height = Math.min(200, Math.floor(H * 0.18));
 		player.x = Math.floor(W / 2 - player.width / 2);
 		player.y = Math.floor(H - player.height - 24);
+	}
+	// if brianCar exists, adapt size
+	if (brianCar) {
+		brianCar.width = Math.min(140, Math.floor(W * 0.12));
+		brianCar.height = Math.min(200, Math.floor(H * 0.18));
 	}
 }
 
