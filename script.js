@@ -22,6 +22,7 @@ const CONFIG = {
 // === Globals ===
 let canvas, ctx, W, H;
 let menu, startBtn, restartBtn, playerNameInput, debugDiv;
+let carSelect, carPreview;
 let hudName, hudDistance, hudSpeed;
 let keys = {};
 let gameRunning = false;
@@ -62,6 +63,14 @@ seeyou.volume = 0.9;
 // === Overlays ===
 let overlayDiv;
 
+// car map (select value -> file + flags)
+const CAR_MAP = {
+	"carro1": { file: "carro1.png", isUno: false, isPeugeot: false },
+	"player2": { file: "player2.png", isUno: false, isPeugeot: false },
+	"uno":    { file: "uno.png", isUno: true, isPeugeot: false },
+	"peugeot":{ file: "p206.png", isUno: false, isPeugeot: true }
+};
+
 // === Images ===
 const IMAGES = {
 	player: new Image(),
@@ -97,6 +106,9 @@ window.addEventListener("DOMContentLoaded", () => {
 	playerNameInput = document.getElementById("playerName");
 	debugDiv = document.getElementById("debug");
 
+	carSelect = document.getElementById("carSelect");
+	carPreview = document.getElementById("carPreview");
+
 	hudName = document.getElementById("hud-name");
 	hudDistance = document.getElementById("hud-distance");
 	hudSpeed = document.getElementById("hud-speed");
@@ -104,6 +116,13 @@ window.addEventListener("DOMContentLoaded", () => {
 	createOverlays();
 	addMusicToggle();
 	createPhaseSelector();
+
+	// bind car selector and preview
+	if (carSelect) {
+		carSelect.addEventListener("change", onCarSelectChange);
+		// initial preview
+		setTimeout(() => onCarSelectChange(), 30);
+	}
 
 	// Start opens phase intro (so user can confirm phase)
 	startBtn && startBtn.addEventListener("click", () => showPhaseIntro(currentPhase));
@@ -123,6 +142,18 @@ window.addEventListener("DOMContentLoaded", () => {
 	drawMenuPreview();
 	updatePhaseLabelInMenu();
 });
+
+// when player selects a car in menu
+function onCarSelectChange() {
+	if (!carSelect || !carPreview) return;
+	const val = carSelect.value || "carro1";
+	const info = CAR_MAP[val] || CAR_MAP["carro1"];
+	// preview image
+	carPreview.src = info.file;
+	// update IMAGES.player so preview in canvas/menu is consistent (but actual in-game behavior also set on startGame)
+	IMAGES.player.src = info.file;
+	CONFIG.PLAYER_IMG = info.file;
+}
 
 // === Music toggle button ===
 function addMusicToggle() {
@@ -238,8 +269,36 @@ function createOverlays() {
 // === START / RESTART ===
 // startGame() será chamada quando o jogador confirmar na intro da fase
 function startGame() {
+	// player name purely from input
 	playerName = (playerNameInput && playerNameInput.value.trim()) ? playerNameInput.value.trim() : "Piloto";
 	hudName.textContent = playerName;
+
+	// choose car based on selector (selector determines special behaviours)
+	let sel = carSelect ? carSelect.value : "carro1";
+	const selInfo = CAR_MAP[sel] || CAR_MAP["carro1"];
+	CONFIG.PLAYER_IMG = selInfo.file;
+	IMAGES.player.src = selInfo.file;
+
+	// reset special flags
+	fiatUnoActive = false;
+	// apply car-specific rules
+	if (selInfo.isUno) {
+		// Fiat Uno special
+		fiatUnoActive = true;
+		CONFIG.MAX_SCROLL = 50000;
+		CONFIG.SCROLL_BASE = 6;
+		CONFIG.SCROLL_ACCEL = 8;
+	} else if (selInfo.isPeugeot) {
+		// Peugeot behavior: will break at 1000m (we keep the existing message logic but based on selected car now)
+		CONFIG.MAX_SCROLL = 15;
+		CONFIG.SCROLL_BASE = 3.5;
+		CONFIG.SCROLL_ACCEL = 2.8;
+	} else {
+		CONFIG.MAX_SCROLL = 18;
+		CONFIG.SCROLL_BASE = 3.5;
+		CONFIG.SCROLL_ACCEL = 2.8;
+	}
+
 	menu.style.display = "none";
 	if (restartBtn) restartBtn.style.display = "none";
 	resetState();
@@ -254,30 +313,6 @@ function startGame() {
 	if (musicEnabled) {
 		gameMusic.currentTime = 0;
 		gameMusic.play().catch(()=>{});
-	}
-
-	// 🔥 EASTER EGG: Fiat Uno
-	if (playerName.toLowerCase() === "fiat uno") {
-		CONFIG.PLAYER_IMG = "uno.png";
-		IMAGES.player.src = CONFIG.PLAYER_IMG;
-		CONFIG.MAX_SCROLL = 50000;
-		CONFIG.SCROLL_BASE = 6;
-		CONFIG.SCROLL_ACCEL = 8;
-		fiatUnoActive = true;
-	} else if (playerName.toLowerCase() === "peugeot") {
-		CONFIG.PLAYER_IMG = "p206.png";
-		IMAGES.player.src = CONFIG.PLAYER_IMG;
-		CONFIG.MAX_SCROLL = 15;
-		CONFIG.SCROLL_BASE = 3.5;
-		CONFIG.SCROLL_ACCEL = 2.8;
-		fiatUnoActive = false;
-	} else {
-		CONFIG.MAX_SCROLL = 18;
-		CONFIG.SCROLL_BASE = 3.5;
-		CONFIG.SCROLL_ACCEL = 2.8;
-		CONFIG.PLAYER_IMG = "carro1.png";
-		IMAGES.player.src = CONFIG.PLAYER_IMG;
-		fiatUnoActive = false;
 	}
 
 	gameRunning = true;
@@ -306,6 +341,7 @@ function resetState() {
 	reverseStartTime = null;
 	easterEggTriggered = false;
 	normalWinTriggered = false;
+	// reset fiatUnoActive here (will be set on start)
 	fiatUnoActive = false;
 	inPhase3Sequence = false;
 	brianActive = false;
@@ -413,7 +449,8 @@ function update(dt) {
 		distance += Math.round(scrollSpeed * dt);
 
 		// === Peugeot: quebra após 1000m ===
-		if (playerName.toLowerCase() === "peugeot" && distance >= 1000 && !player.crashed) {
+		// now based on selected car (we check the current image name)
+		if (IMAGES.player.src && IMAGES.player.src.indexOf("p206") !== -1 && distance >= 1000 && !player.crashed) {
 			player.crashed = true;
 			showLoseOverlay("💥 O Peugeot 206 quebrou após 1000m!");
 			return;
@@ -525,7 +562,7 @@ function startPhase3Sequence() {
 	}
 	try { seeyou.currentTime = 0; seeyou.play(); } catch (e) {}
 
-	// 4) after 5 seconds, Brian "desce" and appears to the side and synchronizes
+	// 4) after 5 seconds, Brian "desce" e aparece ao lado e sincroniza
 	const t1 = setTimeout(() => {
 		brianActive = true;
 		// create brianCar object
@@ -844,6 +881,7 @@ function rectOverlap(a, b) {
 function resize() {
 	W = window.innerWidth;
 	H = window.innerHeight;
+	if (!canvas) return;
 	canvas.width = W;
 	canvas.height = H;
 	if (player) {
@@ -860,10 +898,22 @@ function resize() {
 }
 
 function drawMenuPreview() {
+	if (!ctx) return;
 	ctx.clearRect(0, 0, canvas.width, canvas.height);
 	ctx.fillStyle = "rgba(0,0,0,0.45)";
 	ctx.fillRect(0, 0, canvas.width, canvas.height);
 	ctx.fillStyle = "#fff";
 	ctx.font = "18px monospace";
 	ctx.fillText("Pressione Iniciar para começar a corrida (Desktop - Vista Aérea)", 24, 48);
+	// small preview draw (center) using current IMAGES.player if available
+	const previewW = Math.min(120, Math.floor(W * 0.12));
+	const previewH = Math.min(160, Math.floor(H * 0.12));
+	const px = Math.floor(W/2 - previewW/2);
+	const py = Math.floor(H/2 - previewH/2);
+	if (IMAGES.player && IMAGES.player.complete) {
+		ctx.drawImage(IMAGES.player, px, py, previewW, previewH);
+	} else {
+		ctx.fillStyle = "#ff3b3b";
+		ctx.fillRect(px, py, previewW, previewH);
+	}
 }

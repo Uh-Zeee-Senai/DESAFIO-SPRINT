@@ -10,14 +10,20 @@
 <body>
 	<div id="menu">
 		<h1>Next-Gen Turbo Racing (Desktop)</h1>
+
 		<input id="playerName" placeholder="Digite seu nome de piloto" />
+
 		<label for="carSelect">Escolha seu carro:</label>
-		<select id="carSelect">
-  			<option value="default">Carro 1</option>
-			<option value="default2">Carro 2</option>
-  			<option value="uno">Fiat Uno</option>
-  			<option value="peugeot">Peugeot 206</option>
-		</select>
+		<div id="carSelectRow" style="display:flex;align-items:center;gap:12px;">
+			<select id="carSelect">
+	  			<option value="carro1">Carro 1</option>
+				<option value="player2">Carro 2</option>
+	  			<option value="uno">Fiat Uno</option>
+	  			<option value="peugeot">Peugeot 206</option>
+			</select>
+			<!-- miniatura de pré-visualização -->
+			<img id="carPreview" alt="Preview do carro" width="96" height="48" style="image-rendering: pixelated; border-radius:6px; border:1px solid rgba(255,255,255,0.06)" />
+		</div>
 
 		<div class="menu-row">
 			<button id="startBtn">Iniciar</button>
