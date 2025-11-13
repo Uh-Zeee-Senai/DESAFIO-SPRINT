@@ -641,7 +641,6 @@ function showWinOverlay(isEaster) {
 			showPhaseIntro(2);
 		} else if (currentPhase === 2) {
 			if (!phase3Unlocked) {
-				// allow going to 3 immediately (we also unlocked above when winning 2)
 				phase3Unlocked = true;
 			}
 			currentPhase = 3;
@@ -683,19 +682,30 @@ function showLoseOverlay(customMessage) {
 }
 
 // === Misc ===
+// Updated spawnRival: Phase 1 spawns across the road width (random X inside road),
+// phases 2/3 keep lane-based spawns for predictability.
 function spawnRival() {
 	const idx = Math.floor(Math.random() * IMAGES.rivals.length);
 	const img = IMAGES.rivals[idx];
 	const w = Math.min(120, Math.floor(W * (0.10 + Math.random() * 0.02)));
 	const h = Math.min(170, Math.floor(H * (0.14 + Math.random() * 0.03)));
-	// escolher posição X baseada em "faixas" (3 faixas) para mais previsibilidade
-	const lanes = [
-		Math.floor(W * 0.2 - w/2),
-		Math.floor(W * 0.5 - w/2),
-		Math.floor(W * 0.8 - w/2)
-	];
-	const laneIndex = Math.floor(Math.random() * lanes.length);
-	const laneX = lanes[laneIndex];
+
+	let laneX;
+	if (currentPhase === 1) {
+		// Spawn anywhere across the road width for phase 1
+		const roadW = Math.floor(W * 0.9);
+		const roadX = Math.floor((W - roadW) / 2);
+		laneX = Math.floor(roadX + Math.random() * (roadW - w));
+	} else {
+		// keep lane-based spawns for phase 2 and normal phase 3 spawns
+		const lanes = [
+			Math.floor(W * 0.2 - w / 2),
+			Math.floor(W * 0.5 - w / 2),
+			Math.floor(W * 0.8 - w / 2)
+		];
+		const laneIndex = Math.floor(Math.random() * lanes.length);
+		laneX = lanes[laneIndex];
+	}
 
 	const r = {
 		img,
@@ -717,14 +727,17 @@ function spawnRivalPhase3() {
 	const img = IMAGES.rivals[idx];
 	const w = Math.min(130, Math.floor(W * (0.11 + Math.random() * 0.03)));
 	const h = Math.min(180, Math.floor(H * (0.15 + Math.random() * 0.04)));
-	const lanes = [
-		Math.floor(W * 0.18 - w/2),
-		Math.floor(W * 0.45 - w/2),
-		Math.floor(W * 0.72 - w/2),
-		Math.floor(W * 0.9 - w/2)
+	// lanes tuned to be within visible road area
+	const roadW = Math.floor(W * 0.9);
+	const roadX = Math.floor((W - roadW) / 2);
+	const lanePositions = [
+		Math.floor(roadX + roadW * 0.12 - w/2),
+		Math.floor(roadX + roadW * 0.38 - w/2),
+		Math.floor(roadX + roadW * 0.64 - w/2),
+		Math.floor(roadX + roadW * 0.88 - w/2)
 	];
-	const laneIndex = Math.floor(Math.random() * lanes.length);
-	const laneX = lanes[laneIndex];
+	const laneIndex = Math.floor(Math.random() * lanePositions.length);
+	const laneX = lanePositions[laneIndex];
 
 	const r = {
 		img,
