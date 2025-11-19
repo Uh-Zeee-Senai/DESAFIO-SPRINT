@@ -15,8 +15,8 @@ const CONFIG = {
 	EASTER_EGG_TIME: 10000,
 
 	// 🎯 Ajuste fácil da hitbox
-	HITBOX_OFFSET_X: 5,
-	HITBOX_OFFSET_Y: 10
+	HITBOX_OFFSET_X: 3,
+	HITBOX_OFFSET_Y: 6
 };
 
 // === Globals ===
